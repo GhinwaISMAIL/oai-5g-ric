@@ -25,7 +25,7 @@ MODE="${3:-uniform}"
 TYPE="${4:-AWGN}"
 
 # Baseline (matches the validated single-node stack)
-PLOSS_BASE=20
+PLOSS_BASE=0
 NOISE_GNB=-4
 NOISE_UE=-2
 
