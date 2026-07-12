@@ -1,0 +1,40 @@
+FROM ubuntu:22.04 AS build
+ENV DEBIAN_FRONTEND=noninteractive TZ=Europe/Paris
+RUN apt-get update && apt-get install -y \
+      git cmake ninja-build build-essential swig libsctp-dev python3-dev \
+      pkg-config libconfig-dev libconfig++-dev bison flex libpcre2-dev \
+      autoconf automake libtool gcc-10 g++-10 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 100
+
+# asn1c pinned to the exact commit OAI uses. vlm_master generates code calling
+# CBOR functions absent from FlexRIC's bundled runtime -- do not use it.
+RUN git clone https://github.com/mouse07410/asn1c /tmp/asn1c && \
+    cd /tmp/asn1c && \
+    git checkout 940dd5fa9f3917913fd487b13dfddfacd0ded06e && \
+    autoreconf -iv && \
+    CFLAGS="-O2 -fno-strict-aliasing" ./configure --prefix /opt/asn1c/ && \
+    make -j$(nproc) && make install && ldconfig
+
+COPY openair2/E2AP/flexric /flexric
+WORKDIR /flexric/build
+RUN cmake -GNinja -DCMAKE_BUILD_TYPE=Release \
+      -DKPM_VERSION=KPM_V2_03 -DE2AP_VERSION=E2AP_V2 \
+      -DXAPP_DB=SQLITE3_XAPP .. && \
+    ninja && ninja install
+
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive TZ=Europe/Paris
+RUN apt-get update && apt-get install -y \
+      libsctp1 libconfig9 libconfig++9v5 sqlite3 iproute2 iputils-ping && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /usr/local/lib/flexric /usr/local/lib/flexric
+COPY --from=build /usr/local/etc/flexric /usr/local/etc/flexric
+COPY --from=build /flexric/build/examples/ric/nearRT-RIC /usr/local/bin/nearRT-RIC
+COPY --from=build /flexric/build/examples/xApp/c/monitor/xapp_kpm_moni /usr/local/bin/xapp_kpm_moni
+COPY --from=build /flexric/build/examples/xApp/c/monitor/xapp_rc_moni /usr/local/bin/xapp_rc_moni
+COPY --from=build /flexric/build/examples/xApp/c/monitor/xapp_gtp_mac_rlc_pdcp_moni /usr/local/bin/xapp_gtp_mac_rlc_pdcp_moni
+RUN ldconfig
+EXPOSE 36421/sctp 36422/sctp
+ENTRYPOINT ["/usr/local/bin/nearRT-RIC"]
