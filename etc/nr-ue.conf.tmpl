@@ -1,0 +1,20 @@
+uicc0 = {
+  imsi = "@IMSI@";
+  key = "fec86ba6eb707ed08905757b1bb44b8f";
+  opc= "C42449363BBAD02B66D16BC975D77CC1";
+  dnn= "oai";
+  nssai_sst=1;
+}
+
+# The stock nr-ue.conf ships WITHOUT an rfsimulator block. It must be added
+# here: the downlink channel model is applied UE-side, so chanmod has to be
+# enabled on the UE as well as the gNB. serveraddr points at the gNB, which
+# runs on the cell node's host network.
+rfsimulator = {
+    serveraddr = "@GNB_ADDR@";
+    serverport = 4043;
+    options = ("chanmod");
+    modelname = "AWGN";
+};
+
+@include "channelmod_rfsimu.conf"

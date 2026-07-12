@@ -93,7 +93,20 @@ services:
       - TZ=Europe/Paris
     volumes:
       - ./mini_nonrf_config.yaml:/openair-upf/etc/config.yaml
-      - ../bin/mgen:/usr/local/bin/mgen:ro
+      - ../bin/mgen:/usr/bin/mgen:ro
+    # Interfaces are discovered at runtime by subnet: inside the container the
+    # order is reversed vs. compose, so match on the address instead of eth0/eth1.
+    # N3 (from remote cell-node gNBs) and N4 both ride the public_net side.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - >
+        N4=$$(ip -4 addr show | awk '/192\.168\.71\./{print $$NF}' | head -1);
+        N6=$$(ip -4 addr show | awk '/192\.168\.72\./{print $$NF}' | head -1);
+        cp /openair-upf/etc/config.yaml /tmp/upf_config.yaml;
+        sed -i "s/N4_IFACE/$$N4/g; s/N6_IFACE/$$N6/g" /tmp/upf_config.yaml;
+        ip route replace default via 192.168.72.135 dev $$N6;
+        exec /openair-upf/bin/oai_upf -c /tmp/upf_config.yaml -o
     depends_on:
       - oai-smf
     cap_add:
@@ -109,25 +122,24 @@ services:
         ipv4_address: 192.168.72.134
 
   oai-ext-dn:
+    privileged: true
     container_name: ric5g-oai-ext-dn
     image: oaisoftwarealliance/trf-gen-cn5g:focal
     entrypoint: /bin/bash -c \
-      "iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; \
-       ip route add 12.1.1.0/24 via 192.168.72.134 dev eth0; \
-       sleep infinity"
-    volumes:
-      - ../bin/mgen:/usr/local/bin/mgen:ro
+          "iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE;"\
+          "ip route add 12.1.1.0/24 via 192.168.72.134 dev eth0; sleep infinity"
     depends_on:
       - oai-upf
-    cap_add:
-      - NET_ADMIN
-      - SYS_ADMIN
-    cap_drop:
-      - ALL
-    privileged: true
     networks:
       traffic_net:
         ipv4_address: 192.168.72.135
+    volumes:
+      - ../bin/mgen:/usr/bin/mgen:ro
+    healthcheck:
+      test: /bin/bash -c "ping -c 2 192.168.72.134"
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ---- near-RT RIC -------------------------------------------------------
   # E2 termination for all cell-node gNBs. Reached across the experimental
