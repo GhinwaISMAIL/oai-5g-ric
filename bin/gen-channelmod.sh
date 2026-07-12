@@ -24,10 +24,15 @@ OUT="${2:-channelmod.conf}"
 MODE="${3:-uniform}"
 TYPE="${4:-AWGN}"
 
-# Baseline (matches the validated single-node stack)
+# Baseline: a quiet channel that permits RACH.
+# NOTE: with chanmod actually ACTIVE (it was inert on the stock image), noise
+# matters. At noise_power_dB = -4/-2 the RACH preamble/RAR exchange fails and
+# UEs loop on "RAR reception failed" -- they sync and decode SIB1, but never
+# attach. -30 is quiet enough to attach reliably. Degrade from here (via the
+# conf or telnet) to study the channel's effect; attach first, then impair.
 PLOSS_BASE=0
-NOISE_GNB=-4
-NOISE_UE=-2
+NOISE_GNB=-30
+NOISE_UE=-30
 
 # gradient: spread path loss from PLOSS_BASE to PLOSS_BASE + PLOSS_SPAN
 PLOSS_SPAN=30
