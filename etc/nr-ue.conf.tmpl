@@ -10,4 +10,12 @@ uicc0 = {
 # command line (see cell-setup.sh), matching the validated single-node stack.
 # chanmod is enabled via the channel model include below.
 
+# serveraddr, serverport and the carrier frequency are passed on the command
+# line (see cell-setup.sh). This block exists to enable the channel model:
+# the downlink channel is applied UE-side, so chanmod must be on here too.
+rfsimulator = {
+    options = ("chanmod");
+    modelname = "AWGN";
+};
+
 @include "channelmod_rfsimu.conf"
