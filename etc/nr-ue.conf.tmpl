@@ -6,15 +6,8 @@ uicc0 = {
   nssai_sst=1;
 }
 
-# The stock nr-ue.conf ships WITHOUT an rfsimulator block. It must be added
-# here: the downlink channel model is applied UE-side, so chanmod has to be
-# enabled on the UE as well as the gNB. serveraddr points at the gNB, which
-# runs on the cell node's host network.
-rfsimulator = {
-    serveraddr = "@GNB_ADDR@";
-    serverport = 4043;
-    options = ("chanmod");
-    modelname = "AWGN";
-};
+# rfsimulator serveraddr/port and the carrier frequency are passed on the
+# command line (see cell-setup.sh), matching the validated single-node stack.
+# chanmod is enabled via the channel model include below.
 
 @include "channelmod_rfsimu.conf"

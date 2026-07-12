@@ -171,7 +171,7 @@ for u in $(seq 1 "${UES_PER_CELL}"); do
     environment:
       TZ: Europe/Paris
       ASAN_OPTIONS: detect_leaks=0
-      USE_ADDITIONAL_OPTIONS: "-E --rfsim -r 106 --numerology 1 --log_config.global_log_options level,nocolor,time"
+      USE_ADDITIONAL_OPTIONS: "-E --rfsim -r 106 --numerology 1 --uicc0.imsi ${IMSI} -C 3319680000 --rfsimulator.serveraddr ${CELL_LAN_IP} --log_config.global_log_options level,nocolor,time"
     volumes:
       - ./nr-ue-cell${CELL_IDX}-${u}.conf:/opt/oai-nr-ue/etc/nr-ue.conf
       - ./channelmod-cell${CELL_IDX}.conf:/opt/oai-nr-ue/etc/channelmod_rfsimu.conf
