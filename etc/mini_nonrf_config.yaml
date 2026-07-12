@@ -1,0 +1,159 @@
+log_level:
+  general: debug
+
+register_nf:
+  general: no
+
+http_version: 1
+
+nfs:
+  amf:
+    host: oai-amf
+    sbi:
+      port: 80
+      api_version: v1
+      interface_name: eth0
+    n2:
+      interface_name: eth0
+      port: 38412
+  smf:
+    host: oai-smf
+    sbi:
+      port: 80
+      api_version: v1
+      interface_name: eth0
+    n4:
+      interface_name: eth0
+      port: 8805
+  udr:
+    host: oai-udr
+    sbi:
+      port: 80
+      api_version: v1
+      interface_name: eth0
+  udm:
+    host: oai-udm
+    sbi:
+      port: 80
+      api_version: v1
+      interface_name: eth0
+  ausf:
+    host: oai-ausf
+    sbi:
+      port: 80
+      api_version: v1
+      interface_name: eth0
+
+  upf:
+    host: oai-upf
+    sbi:
+      port: 80
+      api_version: v1
+      interface_name: N4_IFACE
+    n3:
+      interface_name: N4_IFACE
+      port: 2152
+    n4:
+      interface_name: N4_IFACE
+      port: 8805
+    n6:
+      interface_name: N6_IFACE
+    n9:
+      interface_name: N6_IFACE
+      port: 2152
+
+database:
+  host: mysql
+  user: test
+  type: mysql
+  password: test
+  database_name: oai_db
+  generate_random: true
+  connection_timeout: 300
+
+snssais:
+  - &embb_slice1
+    sst: 1
+
+amf:
+  amf_name: "OAI-AMF"
+  support_features_options:
+    enable_simple_scenario: no
+    enable_nssf: no
+    enable_smf_selection: no
+  relative_capacity: 30
+  statistics_timer_interval: 20
+  emergency_support: false
+  served_guami_list:
+    - mcc: 208
+      mnc: 99
+      amf_region_id: 01
+      amf_set_id: 001
+      amf_pointer: 01
+  plmn_support_list:
+    - mcc: 208
+      mnc: 99
+      tac: 0x0001
+      nssai:
+        - *embb_slice1
+  supported_integrity_algorithms:
+    - "NIA0"
+    - "NIA1"
+    - "NIA2"
+  supported_encryption_algorithms:
+    - "NEA0"
+    - "NEA1"
+    - "NEA2"
+
+smf:
+  ue_mtu: 1500
+  support_features:
+    use_local_subscription_info: yes
+    use_local_pcc_rules: yes
+  upfs:
+    - host: oai-upf
+      port: 8805
+      config:
+        enable_usage_reporting: no
+      upf_info:
+        interfaceUpfInfoList:
+          - interfaceType: "N3"
+            networkInstance: "access.oai.org"
+          - interfaceType: "N6"
+            networkInstance: "core.oai.org"
+  ue_dns:
+    primary_ipv4: "172.21.3.100"
+    primary_ipv6: "2001:4860:4860::8888"
+    secondary_ipv4: "8.8.8.8"
+    secondary_ipv6: "2001:4860:4860::8888"
+  ims:
+    pcscf_ipv4: "127.0.0.1"
+    pcscf_ipv6: "fe80::7915:f408:1787:db8b"
+  smf_info:
+    sNssaiSmfInfoList:
+      - sNssai: *embb_slice1
+        dnnSmfInfoList:
+          - dnn: "oai"
+  local_subscription_infos:
+    - single_nssai: *embb_slice1
+      dnn: "oai"
+      qos_profile:
+        5qi: 9
+        session_ambr_ul: "200Mbps"
+        session_ambr_dl: "400Mbps"
+
+upf:
+  support_features:
+    enable_bpf_datapath: no
+    enable_snat: yes
+  remote_n6_gw: 192.168.72.135
+  upf_info:
+    sNssaiUpfInfoList:
+      - sNssai: *embb_slice1
+        dnnUpfInfoList:
+          - dnn: "oai"
+
+dnns:
+  - dnn: "oai"
+    pdu_session_type: "IPV4"
+    ipv4_subnet: "12.1.1.0/24"
