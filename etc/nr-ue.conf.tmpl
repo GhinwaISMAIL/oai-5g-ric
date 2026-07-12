@@ -14,6 +14,8 @@ uicc0 = {
 # line (see cell-setup.sh). This block exists to enable the channel model:
 # the downlink channel is applied UE-side, so chanmod must be on here too.
 rfsimulator = {
+    serveraddr = "@GNB_ADDR@";
+    serverport = 4043;
     options = ("chanmod");
     modelname = "AWGN";
 };
