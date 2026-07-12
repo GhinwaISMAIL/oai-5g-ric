@@ -135,7 +135,7 @@ services:
     environment:
       TZ: Europe/Paris
       ASAN_OPTIONS: detect_leaks=0
-      USE_ADDITIONAL_OPTIONS: "-E --rfsim --gNBs.[0].min_rxtxtime 3 --log_config.global_log_options level,nocolor,time"
+      USE_ADDITIONAL_OPTIONS: "-E --rfsim --serveraddr server --gNBs.[0].min_rxtxtime 3 --log_config.global_log_options level,nocolor,time"
     volumes:
       - ./gnb-cell${CELL_IDX}.conf:/opt/oai-gnb/etc/gnb.conf
       - ./channelmod-cell${CELL_IDX}.conf:/opt/oai-gnb/etc/channelmod_rfsimu.conf
