@@ -124,10 +124,14 @@ THREAD_STRUCT = (
   }
 );
 
-rfsimulator = {
-    serveraddr = "server";
-    options = ("chanmod");
-};
+rfsimulator = (
+{
+  serveraddr = "server";
+  serverport = 4043;
+  options = ("chanmod");
+  modelname = "AWGN";
+}
+);
 
 security = {
   ciphering_algorithms = ( "nea0" );
