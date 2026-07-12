@@ -182,6 +182,79 @@ with emulated random data; `SCTP_SEND_FAILED` prints when an xApp disconnects.
 
 ---
 
+## 3b. Deployment findings — first working multi-node instantiation
+
+Validated: 2 cells (d740) + core (d430), 2 UEs/cell. All UEs attached, both gNBs
+registered with the AMF and connected to FlexRIC, chanmod active, end-to-end user
+plane confirmed (UE `oaitun_ue1` -> gNB -> GTP-U over LAN -> UPF -> ext-dn, 0%
+loss, ~100 ms RTT).
+
+### The rfsimulator section MUST use the ARRAY form
+```
+rfsimulator = (            # <-- parentheses
+{
+  serveraddr = "server";   # gNB; on the UE: the gNB's address
+  serverport = 4043;
+  options    = ("chanmod");
+  modelname  = "AWGN";
+}
+);
+```
+The **group form** (`rfsimulator = { ... };`) is **silently ignored** by this
+build. No error, no warning: `serveraddr` and `options` are simply discarded and
+the defaults win — the gNB runs as *client* against 127.0.0.1 and the channel
+model never loads. This cost hours; the only symptom is absence of `[OCM]`.
+
+### Do not mix CLI and config for rfsim
+Any `--rfsimulator.*` CLI arg makes the gNB reject startup
+(`[CONFIG] unknown option: --rfsimulator.options`). Put ALL rfsim settings in the
+config file and pass none on the command line. (The UE tolerates
+`--rfsimulator.serveraddr`, but keeping both ends config-driven is simpler.)
+
+### One channel model per UE — required
+RFsim needs `rfsimu_channel_ue0 .. ue(K-1)`, one per UE. With only `ue0` defined,
+every other UE logs `Model rfsimu_channel_ue1 not found` and runs with **no
+channel at all**. `bin/gen-channelmod.sh` generates the list from `ues_per_cell`.
+
+### noise_power_dB gates RACH once chanmod is LIVE
+The single biggest surprise. With chanmod inert (stock image) the values in
+`channelmod.conf` were decorative. Once it actually applies:
+
+| noise_power_dB | result |
+|----------------|--------|
+| -4 (gNB) / -2 (UE) | **UEs never attach.** They sync, decode SIB1, then loop on `[MAC] RAR reception failed` -> `RRC moved into IDLE`. The AMF shows them `5GMM-DEREGISTERED`. |
+| -30 | all UEs attach on first try |
+
+`ploss_dB` was NOT the culprit (0 dB still failed at high noise). Attach first with
+a quiet channel, then impair — via `channelmod-cell<N>.conf` or live over telnet.
+This is the operating envelope of the channel model, and it is a real result: the
+model demonstrably affects the radio link.
+
+### Docker >= 28 blocks external access to container IPs
+Docker installs raw/prerouting DROP rules per container
+(`iifname != "<bridge>" ip daddr <container IP> drop`) — traffic from outside the
+bridge dies **before** routing and **before** FORWARD, so nothing in `DOCKER-USER`
+or `FORWARD` can rescue it. Cell-node gNBs reach the AMF/UPF/RIC by IP across the
+LAN, so this must be disabled per network:
+```yaml
+driver_opts:
+  com.docker.network.bridge.gateway_mode_ipv4: "nat-unprotected"
+```
+Symptom without it: `ip route get` says the packet would route, tcpdump shows it
+arriving on the LAN NIC, nothing appears on the bridge, and no firewall counter
+increments anywhere.
+
+### Per-cell config gotchas
+- `Active_gNBs` at the top of gnb.conf must match `gNB_name` inside the block, or
+  the gNB asserts: `no active gNB found/mismatch of gNBs`.
+- The UE needs the carrier frequency on the CLI: `-C 3319680000 -r 106
+  --numerology 1`. Without `-C` it asserts `Undefined Frequency Range for
+  frequency 0 Hz`.
+- `GNB_IPV4_ADDRESS_FOR_NGU` must be the **cell node's LAN IP**, or downlink
+  GTP-U is sent somewhere unreachable.
+
+---
+
 ## 4. Slices
 
 The gNB binary is slice-capable out of the box (UE requested `NSSAI 1.ffffff` in
