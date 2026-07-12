@@ -77,14 +77,25 @@ if [ ! -f "$MGEN_BIN" ] || [ ! -x "$MGEN_BIN" ]; then
 fi
 
 # ------------------------------------------------------------------ #
-# 5. Point the RIC config at this node's bridge IP
+# 5. Generate the subscriber DB for this topology.
+#    MySQL reinitializes from oai_db.sql on every start, so every UE across
+#    every cell must be present BEFORE the stack comes up. A UE missing here
+#    will fail authentication, or (if only half-present) register and then fail
+#    PDU session establishment.
+# ------------------------------------------------------------------ #
+NUM_CELLS="${2:-2}"
+UES_PER_CELL="${3:-12}"
+bash /local/repository/bin/gen-subscribers.sh "${NUM_CELLS}" "${UES_PER_CELL}"
+
+# ------------------------------------------------------------------ #
+# 6. Point the RIC config at this node's bridge IP
 # ------------------------------------------------------------------ #
 cd /local/repository/etc
 sed -i "s/^NEAR_RIC_IP.*/NEAR_RIC_IP = 192.168.71.142/" flexric.conf
 echo "[CORE] flexric.conf:"; cat flexric.conf
 
 # ------------------------------------------------------------------ #
-# 6. Start the stack
+# 7. Start the stack
 # ------------------------------------------------------------------ #
 echo "[CORE] Starting core + RIC..."
 docker compose -f docker-compose-core.yaml up -d
