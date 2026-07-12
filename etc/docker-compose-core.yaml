@@ -184,6 +184,10 @@ networks:
         - subnet: 192.168.71.128/26
     driver_opts:
       com.docker.network.bridge.name: "ric5g-public"
+      # Docker >=28 drops traffic to container IPs arriving from outside the
+      # bridge. Cell-node gNBs reach the AMF/UPF/RIC by IP across the LAN, so
+      # that protection must be disabled for this network.
+      com.docker.network.bridge.gateway_mode_ipv4: "nat-unprotected"
   traffic_net:
     driver: bridge
     name: ric5g-traffic
@@ -192,3 +196,4 @@ networks:
         - subnet: 192.168.72.128/26
     driver_opts:
       com.docker.network.bridge.name: "ric5g-traffic"
+      com.docker.network.bridge.gateway_mode_ipv4: "nat-unprotected"
