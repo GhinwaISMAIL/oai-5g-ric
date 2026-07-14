@@ -19,7 +19,7 @@ RUN git clone https://github.com/mouse07410/asn1c /tmp/asn1c && \
 COPY openair2/E2AP/flexric /flexric
 WORKDIR /flexric/build
 RUN cmake -GNinja -DCMAKE_BUILD_TYPE=Release \
-      -DKPM_VERSION=KPM_V2_03 -DE2AP_VERSION=E2AP_V2 \
+      -DKPM_VERSION=KPM_V3_00 -DE2AP_VERSION=E2AP_V3 \
       -DXAPP_DB=SQLITE3_XAPP .. && \
     ninja && ninja install
 
@@ -35,6 +35,8 @@ COPY --from=build /flexric/build/examples/ric/nearRT-RIC /usr/local/bin/nearRT-R
 COPY --from=build /flexric/build/examples/xApp/c/monitor/xapp_kpm_moni /usr/local/bin/xapp_kpm_moni
 COPY --from=build /flexric/build/examples/xApp/c/monitor/xapp_rc_moni /usr/local/bin/xapp_rc_moni
 COPY --from=build /flexric/build/examples/xApp/c/monitor/xapp_gtp_mac_rlc_pdcp_moni /usr/local/bin/xapp_gtp_mac_rlc_pdcp_moni
+# the xApp reads this from a hardcoded path at runtime
+COPY --from=build /flexric/build/28_552_kpm_meas.txt /flexric/build/28_552_kpm_meas.txt
 RUN ldconfig
 EXPOSE 36421/sctp 36422/sctp
 ENTRYPOINT ["/usr/local/bin/nearRT-RIC"]
