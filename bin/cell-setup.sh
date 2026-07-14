@@ -24,7 +24,7 @@ CELL_LAN_IP="10.10.1.$((10 + CELL_IDX))"
 
 AMF_IP="192.168.71.132"
 UPF_IP="192.168.71.134"
-RIC_IP="192.168.71.142"
+RIC_IP="10.10.1.1"        # the native RIC binds to the core node's LAN IP
 DN_SUBNET="192.168.72.128/26"
 
 # Per-cell identities. These MUST be unique across cells or the AMF/RIC will
