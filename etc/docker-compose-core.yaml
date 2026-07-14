@@ -150,7 +150,7 @@ services:
   # running fine. This cost hours of misdiagnosis.
   flexric:
     container_name: ric5g-flexric
-    image: ghinwa555/flexric-kpm:v1
+    image: ghinwa555/flexric-kpm:v2
     tty: true
     environment:
       - TZ=Europe/Paris

@@ -92,8 +92,8 @@ echo "[CELL${CELL_IDX}] Core reachable."
 # ------------------------------------------------------------------ #
 # 4. Pull images
 # ------------------------------------------------------------------ #
-docker pull ghinwa555/oai-gnb-e2-chan:v1
-docker pull ghinwa555/oai-nr-ue-chan:v1
+docker pull ghinwa555/oai-gnb-e2-chan:v2
+docker pull ghinwa555/oai-nr-ue-chan:v2
 
 # ------------------------------------------------------------------ #
 # 5. Generate this cell's gNB config
@@ -134,7 +134,7 @@ cat > "${COMPOSE}" <<EOF
 services:
   oai-gnb:
     container_name: ric5g-gnb-cell${CELL_IDX}
-    image: ghinwa555/oai-gnb-e2-chan:v1
+    image: ghinwa555/oai-gnb-e2-chan:v2
     network_mode: host
     cap_drop:
       - ALL
@@ -166,7 +166,7 @@ for u in $(seq 1 "${UES_PER_CELL}"); do
 
   oai-nr-ue${u}:
     container_name: ric5g-ue-cell${CELL_IDX}-${u}
-    image: ghinwa555/oai-nr-ue-chan:v1
+    image: ghinwa555/oai-nr-ue-chan:v2
     cap_drop:
       - ALL
     cap_add:
