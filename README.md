@@ -57,15 +57,6 @@ and no indications are produced.
 
 ## Instantiating
 
-1. POWDER → Experiments → Create Experiment Profile → source: Git repo →
-   `https://github.com/GhinwaISMAIL/oai-5g-ric`
-2. Instantiate with:
-   - `num_cells` — number of gNBs (default 2)
-   - `ues_per_cell` — UEs per gNB (default 12)
-   - `core_type` — d430; `cell_type` — d740
-3. Allow 30–45 minutes. The core node compiles FlexRIC before the RIC starts; each
-   cell node waits for the AMF to become reachable before launching its gNB.
-
 Progress is in `/local/logs/setup.log` on every node, and the RIC's output is in
 `/local/logs/nearRT-RIC.log` on the core.
 
