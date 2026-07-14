@@ -144,9 +144,14 @@ services:
   # ---- near-RT RIC -------------------------------------------------------
   # E2 termination for all cell-node gNBs. Reached across the experimental
   # LAN via the core node's IP forwarding (see core-setup.sh).
+  #
+  # tty: true is REQUIRED. FlexRIC block-buffers stdout when not on a TTY, so
+  # `docker logs` returns nothing at all and the RIC appears dead when it is
+  # running fine. This cost hours of misdiagnosis.
   flexric:
     container_name: ric5g-flexric
     image: ghinwa555/flexric-kpm:v1
+    tty: true
     environment:
       - TZ=Europe/Paris
     volumes:
@@ -156,24 +161,32 @@ services:
       public_net:
         ipv4_address: 192.168.71.142
 
-  # ---- KPM monitoring xApp ----------------------------------------------
-  # Subscribes to KPM (RAN function 2) on every connected E2 node and writes
-  # indications to the sqlite DB in /tmp (bind-mounted to /local/logs/xapp).
-  kpm-xapp:
-    container_name: ric5g-kpm-xapp
-    image: ghinwa555/flexric-kpm:v1
-    entrypoint: /bin/bash -c \
-      "sleep 20; /usr/local/bin/xapp_kpm_moni"
-    environment:
-      - TZ=Europe/Paris
-    volumes:
-      - ./flexric.conf:/usr/local/etc/flexric/flexric.conf
-      - /local/logs/xapp:/tmp
-    depends_on:
-      - flexric
-    networks:
-      public_net:
-        ipv4_address: 192.168.71.143
+  # ---- KPM monitoring xApp: DELIBERATELY NOT STARTED HERE ----------------
+  #
+  # A kpm-xapp service used to live here, starting 20s after the RIC. It is
+  # removed on purpose. Do not add it back as an auto-started service.
+  #
+  # Why: it starts before any gNB has completed E2 setup, crashes (SIGSEGV,
+  # exit 139), and leaves an orphaned SCTP association on the RIC's E42 port.
+  # The RIC then accumulates zombie associations with full, never-drained
+  # socket buffers, and subsequent xApps time out on E42 SETUP. Every RIC in
+  # this testbed was poisoned from boot by this container.
+  #
+  # Run an xApp MANUALLY, and only after the gNBs have registered:
+  #
+  #   1. confirm the E2 nodes are up:
+  #        docker logs ric5g-flexric 2>&1 | grep "E2 SETUP-REQUEST rx"
+  #   2. confirm UEs are attached and carrying traffic (KPM is per-UE; an
+  #      idle cell reports nothing)
+  #   3. then, once:
+  #        docker exec -it ric5g-flexric /usr/local/bin/xapp_kpm_moni
+  #      Let it run to completion. Do NOT Ctrl+C it -- a killed xApp leaves a
+  #      zombie association behind.
+  #
+  # Hard rule: never restart the RIC without also restarting every gNB. OAI's
+  # E2 agent does not recover from a RIC restart -- it heartbeats the dead
+  # association forever and the RIC replies SCTP ABORT. Restarting a gNB in
+  # turn drops all of its UEs.
 
 networks:
   public_net:
