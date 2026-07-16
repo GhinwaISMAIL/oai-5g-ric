@@ -138,13 +138,20 @@ sed -i "s|^NEAR_RIC_IP.*|NEAR_RIC_IP = ${CORE_LAN_IP}|" /usr/local/etc/flexric/f
 echo "[CORE] flexric.conf:"; cat /usr/local/etc/flexric/flexric.conf
 
 # ------------------------------------------------------------------ #
-# 7. Start the stack
+# 7. Start the core network.
+#    MUST cd back to etc/ first. The FlexRIC build above leaves the shell in
+#    /opt/oai-src/openair2/E2AP/flexric/build, where docker-compose-core.yaml
+#    does not exist. Without this cd, compose fails with "no configuration file
+#    provided", set +e swallows it, and the entire core silently never starts --
+#    the AMF wait below then burns its full timeout against containers that were
+#    never created.
 # ------------------------------------------------------------------ #
-echo "[CORE] Starting core + RIC..."
+echo "[CORE] Starting core network..."
+cd /local/repository/etc
 docker compose -f docker-compose-core.yaml up -d
 
 # ------------------------------------------------------------------ #
-# 7. Wait for AMF
+# 8. Wait for AMF
 # ------------------------------------------------------------------ #
 echo "[CORE] Waiting for AMF..."
 MAX_WAIT=600
@@ -161,10 +168,16 @@ done
 echo "[CORE] AMF ready."
 
 # ------------------------------------------------------------------ #
-# 8. Start the native RIC.
+# 9. Start the native RIC.
 #
-#    Runs under systemd-style nohup so it survives this script exiting. Its log
-#    is at /local/logs/nearRT-RIC.log.
+#    Runs under nohup so it survives this script exiting. Its log is at
+#    /local/logs/nearRT-RIC.log.
+#
+#    stdbuf -oL -eL is REQUIRED: FlexRIC block-buffers stdout when it is not
+#    writing to a TTY (here it writes to a file). Without line-buffering the log
+#    stays empty for a long time after the RIC is already up, and the readiness
+#    grep below reports a false "did not report SM loading" warning on a healthy
+#    RIC. Line-buffering makes the log reflect the RIC's real state immediately.
 #
 #    Do NOT auto-start an xApp here. An xApp started before the gNBs have
 #    completed E2 setup crashes and leaves an orphaned SCTP association that
@@ -176,7 +189,7 @@ echo "[CORE] AMF ready."
 # ------------------------------------------------------------------ #
 echo "[CORE] Starting nearRT-RIC on ${CORE_LAN_IP}:36421..."
 cd /opt/oai-src/openair2/E2AP/flexric
-nohup ./build/examples/ric/nearRT-RIC > /local/logs/nearRT-RIC.log 2>&1 &
+nohup stdbuf -oL -eL ./build/examples/ric/nearRT-RIC > /local/logs/nearRT-RIC.log 2>&1 &
 sleep 10
 
 if grep -q "Loading SM ID = 2" /local/logs/nearRT-RIC.log; then
