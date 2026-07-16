@@ -2,9 +2,9 @@
 # =============================================================================
 # core-setup.sh — core node: 5G core NFs + FlexRIC near-RT RIC (built natively)
 #
-# Runs on the single "core" node. Brings up the CN, the RIC, and the monitoring
-# xApp, then enables forwarding so cell nodes can reach the Docker bridges
-# (192.168.71.128/26 and 192.168.72.128/26) across the experimental LAN.
+# Runs on the single "core" node. Brings up the CN and the RIC, then enables
+# forwarding so cell nodes can reach the Docker bridges (192.168.71.128/26 and
+# 192.168.72.128/26) across the experimental LAN.
 #
 # Cell nodes wait for the AMF to be reachable before starting their gNBs.
 # =============================================================================
@@ -12,6 +12,8 @@
 set +e
 
 CORE_LAN_IP="${1:-10.10.1.1}"
+OAI_COMMIT="70508ebaf52f2aae420566d380c6537f2efb9f0c"
+FLEXRIC_COMMIT="ef6d722f22191eea74089966983da1f5ec1fedd4"
 
 mkdir -p /local/logs /local/logs/xapp
 chmod 777 /local/logs/xapp
@@ -121,15 +123,35 @@ make -j"$(nproc)" && make install && ldconfig
 
 echo "[CORE] Building FlexRIC from the OAI submodule..."
 rm -rf /opt/oai-src
-git clone https://gitlab.eurecom.fr/oai/openairinterface5g.git /opt/oai-src
+git clone https://gitlab.eurecom.fr/oai/openairinterface5g.git /opt/oai-src \
+    || exit 1
 cd /opt/oai-src
-git checkout develop
-git submodule update --init --recursive
+git checkout --detach "${OAI_COMMIT}" || exit 1
+git submodule update --init --recursive || exit 1
+
+ACTUAL_OAI_COMMIT="$(git rev-parse HEAD)"
+ACTUAL_FLEXRIC_COMMIT="$(git -C openair2/E2AP/flexric rev-parse HEAD)"
+if [ "${ACTUAL_OAI_COMMIT}" != "${OAI_COMMIT}" ]; then
+    echo "[CORE] ERROR: OAI ${ACTUAL_OAI_COMMIT}, expected ${OAI_COMMIT}"
+    exit 1
+fi
+if [ "${ACTUAL_FLEXRIC_COMMIT}" != "${FLEXRIC_COMMIT}" ]; then
+    echo "[CORE] ERROR: FlexRIC ${ACTUAL_FLEXRIC_COMMIT}, expected ${FLEXRIC_COMMIT}"
+    exit 1
+fi
+echo "[CORE] OAI=${ACTUAL_OAI_COMMIT} FlexRIC=${ACTUAL_FLEXRIC_COMMIT}"
+
+python3 /local/repository/bin/patch-flexric-sqlite-buffers.py \
+    /opt/oai-src/openair2/E2AP/flexric/src/xApp/db/sqlite3/sqlite3_wrapper.c \
+    || exit 1
+git -C /opt/oai-src/openair2/E2AP/flexric diff --check || exit 1
+
 cd /opt/oai-src/openair2/E2AP/flexric
 mkdir -p build && cd build
-cmake -DKPM_VERSION=KPM_V3_00 -DE2AP_VERSION=E2AP_V3 -DXAPP_DB=SQLITE3_XAPP ..
-make -j"$(nproc)"
-make install
+cmake -DKPM_VERSION=KPM_V3_00 -DE2AP_VERSION=E2AP_V3 -DXAPP_DB=SQLITE3_XAPP .. \
+    || exit 1
+make -j"$(nproc)" || exit 1
+make install || exit 1
 ls -1 /usr/local/lib/flexric/
 
 # make install OVERWRITES flexric.conf and resets NEAR_RIC_IP to 127.0.0.1.

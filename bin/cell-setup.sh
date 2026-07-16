@@ -33,6 +33,7 @@ GNB_ID=$((0xe00 + CELL_IDX - 1))
 PCI=$((CELL_IDX - 1))
 NR_CELL_ID=$((12345678 + CELL_IDX - 1))
 UE_SUBNET="172.$((20 + CELL_IDX)).0.0/24"
+DOCKER_BRIDGE_CIDR="172.30.${CELL_IDX}.1/24"
 
 # IMSI slice for this cell: base + (cell-1)*K .. + K-1
 IMSI_BASE=208990100001100
@@ -48,9 +49,23 @@ echo "============================================"
 
 # ------------------------------------------------------------------ #
 # 1. Install Docker
+#
+#    FlexRIC's SCTP client advertises every address on the cell host. If every
+#    POWDER node keeps Docker's default 172.17.0.1 address, the RIC sends an
+#    SCTP heartbeat for a cell to its own local docker0 and the kernel answers
+#    with ABORT, destroying an otherwise healthy E2 association. Configure a
+#    unique default bridge before Docker starts for the first time.
 # ------------------------------------------------------------------ #
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg lsb-release
+
+install -m 0755 -d /etc/docker
+cat > /etc/docker/daemon.json <<EOF
+{
+  "bip": "${DOCKER_BRIDGE_CIDR}"
+}
+EOF
+
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
     | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -61,6 +76,14 @@ echo \
   > /etc/apt/sources.list.d/docker.list
 apt-get update -y
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+systemctl restart docker
+ACTUAL_DOCKER_BRIDGE="$(ip -4 -o addr show docker0 2>/dev/null | awk '{print $4}')"
+if [ "${ACTUAL_DOCKER_BRIDGE}" != "${DOCKER_BRIDGE_CIDR}" ]; then
+    echo "[CELL${CELL_IDX}] ERROR: docker0=${ACTUAL_DOCKER_BRIDGE:-missing}, expected ${DOCKER_BRIDGE_CIDR}"
+    exit 1
+fi
+echo "[CELL${CELL_IDX}] docker0=${ACTUAL_DOCKER_BRIDGE} (unique SCTP address)"
 
 # ------------------------------------------------------------------ #
 # 2. Route the core's Docker bridges via the core node.

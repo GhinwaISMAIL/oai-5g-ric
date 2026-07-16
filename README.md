@@ -25,6 +25,12 @@ or more cells, and their UEs.
 One core node runs the 5G core and the RIC. Each cell node runs one gNB with its UEs
 colocated.
 
+Each cell also receives a unique default Docker bridge
+(`172.30.<cell>.1/24`). FlexRIC advertises every host address in its SCTP
+association, so reusing Docker's `172.17.0.1` on every node can make the RIC send a
+heartbeat to its own local bridge and receive an SCTP abort instead of reaching the
+cell.
+
 **A cell's gNB and its UEs must remain on the same node.** The RFsim IQ path between
 them is local, which is what keeps the channel model the only source of impairment.
 Splitting UEs onto a different node from their gNB would push IQ samples over the
@@ -52,6 +58,13 @@ The near-RT RIC runs as a host process on the core node, built from OAI's FlexRI
 submodule at boot. It is not containerised: a RIC built from the standalone FlexRIC
 repository sends subscription requests that OAI's embedded E2 agent does not answer,
 and no indications are produced.
+
+The setup pins the validated OAI revision
+`70508ebaf52f2aae420566d380c6537f2efb9f0c` and FlexRIC revision
+`ef6d722f22191eea74089966983da1f5ec1fedd4`. Before building, it applies a
+checked, idempotent patch that replaces the fixed 2048-byte MAC, RLC, PDCP and GTP
+SQLite aggregation buffers with capacity proportional to the number of records.
+This prevents the `out_len >= max` assertions seen with multiple attached UEs.
 
 `BUILD.md` documents how the images are built and the constraints that apply.
 
@@ -134,7 +147,7 @@ reports nothing.
 
 ```bash
 cd /opt/oai-src/openair2/E2AP/flexric
-./build/examples/xApp/c/monitor/xapp_kpm_moni
+./build/examples/xApp/c/monitor/xapp_gtp_mac_rlc_pdcp_moni
 ```
 
 Measurements are written to a SQLite database at `/tmp/xapp_db_*`:
@@ -156,9 +169,10 @@ Measurements are written to a SQLite database at `/tmp/xapp_db_*`:
   must be restarted after the RIC.
 - **Restarting a gNB drops all of its UEs.** They need an explicit restart, and their
   data-network routes re-applied.
-- **Do not interrupt an xApp.** A killed xApp leaves an SCTP association behind on the
-  RIC with undrained buffers; subsequent xApps then time out. The example xApps have
-  a fixed run duration — let them exit.
+- **Stop an xApp with `Ctrl-C`/`SIGINT`, never `SIGKILL`.** A clean interrupt sends
+  subscription-delete requests and waits for their responses. Confirm
+  `Successfully stopped` and `Test xApp run SUCCESSFULLY` in the log. Force-killing
+  can leave the RIC's xApp-facing SCTP state with undrained buffers.
 - **Do not start an xApp automatically.** Started before the gNBs have completed E2
   setup, it crashes and leaves the RIC's xApp-facing state unusable.
 
@@ -184,6 +198,8 @@ bin/cell-setup.sh        cell: routes, wait for AMF, gNB + UEs, data-network rou
 bin/gen-channelmod.sh    per-UE channel models for a cell
 bin/gen-subscribers.sh   subscriber database for num_cells × ues_per_cell
 bin/mgen-preflight.sh    readiness gate before data collection
+bin/patch-flexric-sqlite-buffers.py
+                         checked MAC/RLC/PDCP/GTP SQLite buffer fix
 etc/gnb-cell.conf.tmpl   gNB template: E2 agent, channel model, per-cell identities
 etc/nr-ue.conf.tmpl      UE template
 Dockerfile.flexric       reference build for a containerised RIC (see BUILD.md)

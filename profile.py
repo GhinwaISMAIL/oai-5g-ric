@@ -4,7 +4,7 @@ POWDER profile: oai-5g-ric
 Multi-cell OAI 5G SA RFsim scale-out with FlexRIC near-RT RIC + channel model.
 
 Topology:
-  1 x core node  : CN NFs + FlexRIC nearRT-RIC + KPM xApp        (default d430)
+  1 x core node  : CN NFs + FlexRIC nearRT-RIC                   (default d430)
   N x cell nodes : one E2-enabled, chanmod-capable gNB + K UEs   (default d740)
 
 Shared experimental LAN 10.10.1.0/26: core = .1, cell-k = .(10+k)
@@ -74,8 +74,9 @@ for k in range(1, params.num_cells + 1):
 tour = IG.Tour()
 tour.Description(IG.Tour.TEXT,
     "Multi-cell OAI 5G SA RFsim scale-out with FlexRIC near-RT RIC and channel "
-    "modelling. One core node runs the CN + RIC + KPM xApp; each cell node runs "
-    "one E2-enabled, chanmod-capable gNB with its UEs colocated. "
+    "modelling. One core node runs the CN + RIC; each cell node runs one "
+    "E2-enabled, chanmod-capable gNB with its UEs colocated. Start xApps by hand "
+    "after E2 registration and UE attachment. "
     "PLMN 208/99, TAC=1, SST=1, DNN=oai.")
 tour.Instructions(IG.Tour.TEXT,
     "Bring-up is staged: the core node comes up first, then each cell node waits "
