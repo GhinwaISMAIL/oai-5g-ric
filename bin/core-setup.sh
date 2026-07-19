@@ -15,8 +15,8 @@ CORE_LAN_IP="${1:-10.10.1.1}"
 OAI_COMMIT="70508ebaf52f2aae420566d380c6537f2efb9f0c"
 FLEXRIC_COMMIT="ef6d722f22191eea74089966983da1f5ec1fedd4"
 
-mkdir -p /local/logs /local/logs/xapp
-chmod 777 /local/logs/xapp
+mkdir -p /local/logs /local/logs/xapp /local/logs/mgen
+chmod 777 /local/logs/xapp /local/logs/mgen
 
 echo "============================================"
 echo "[CORE] started at $(date)  lan_ip=${CORE_LAN_IP}"

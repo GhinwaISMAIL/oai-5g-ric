@@ -108,8 +108,50 @@ done
 sudo docker exec ric5g-ue-cell1-1 ping -I oaitun_ue1 -c3 192.168.72.135
 ```
 
-`bin/mgen-preflight.sh` gates data collection on registration, tunnel presence, and
-routing, and detects traffic that bypasses the 5G stack.
+### Distributed MGEN preflight
+
+The external DN is on the core node while UE containers are on their respective
+cell nodes. Run the MGEN coordinator from the operator workstation, where SSH can
+reach both POWDER hosts. Do not run the old single-Docker-host workflow on a node.
+
+First validate one UE with a short bidirectional flow:
+
+```bash
+cd oai-5g-ric
+
+bash bin/mgen-run-distributed.sh \
+  ghinwa@CORE_POWDER_HOST \
+  ghinwa@CELL1_POWDER_HOST \
+  1 1 full
+```
+
+Then validate all UEs on each cell:
+
+```bash
+# Registration, MGEN binary, and tunnel route only
+bash bin/mgen-run-distributed.sh \
+  ghinwa@CORE_POWDER_HOST ghinwa@CELL1_POWDER_HOST 1 all quick
+
+# Bounded uplink and downlink MGEN flows
+bash bin/mgen-run-distributed.sh \
+  ghinwa@CORE_POWDER_HOST ghinwa@CELL1_POWDER_HOST 1 all full
+
+bash bin/mgen-run-distributed.sh \
+  ghinwa@CORE_POWDER_HOST ghinwa@CELL2_POWDER_HOST 2 all full
+```
+
+The default full test sends ten 1000-byte packets per second in each direction for
+five seconds per UE. Override the controlled load with environment variables:
+
+```bash
+RATE=100 SIZE=1200 DURATION=60 \
+  bash bin/mgen-run-distributed.sh \
+  ghinwa@CORE_POWDER_HOST ghinwa@CELL1_POWDER_HOST 1 1 full
+```
+
+MGEN logs persist under `/local/logs/mgen` on the core and selected cell. The
+coordinator also checks `oaitun_ue1` packet counters, so Docker-bridge traffic
+cannot be mistaken for valid 5G user-plane traffic.
 
 ## The channel model
 
@@ -197,7 +239,11 @@ bin/core-setup.sh        core: 5G core network, then FlexRIC built and run nativ
 bin/cell-setup.sh        cell: routes, wait for AMF, gNB + UEs, data-network routes
 bin/gen-channelmod.sh    per-UE channel models for a cell
 bin/gen-subscribers.sh   subscriber database for num_cells × ues_per_cell
-bin/mgen-preflight.sh    readiness gate before data collection
+bin/mgen-core.sh         core-local external-DN MGEN endpoint helper
+bin/mgen-cell.sh         cell-local UE MGEN and tunnel-counter helper
+bin/mgen-run-distributed.sh
+                         workstation-side SSH coordinator for core + one cell
+bin/mgen-preflight.sh    compatibility notice for the removed single-host flow
 bin/patch-flexric-sqlite-buffers.py
                          checked MAC/RLC/PDCP/GTP SQLite buffer fix
 etc/gnb-cell.conf.tmpl   gNB template: E2 agent, channel model, per-cell identities

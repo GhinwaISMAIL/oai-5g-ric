@@ -39,7 +39,8 @@ DOCKER_BRIDGE_CIDR="172.30.${CELL_IDX}.1/24"
 IMSI_BASE=208990100001100
 IMSI_START=$((IMSI_BASE + (CELL_IDX - 1) * UES_PER_CELL))
 
-mkdir -p /local/logs
+mkdir -p /local/logs /local/logs/mgen
+chmod 777 /local/logs/mgen
 
 echo "============================================"
 echo "[CELL${CELL_IDX}] started at $(date)"
@@ -205,6 +206,7 @@ for u in $(seq 1 "${UES_PER_CELL}"); do
       - ./nr-ue-cell${CELL_IDX}-${u}.conf:/opt/oai-nr-ue/etc/nr-ue.conf
       - ./channelmod-cell${CELL_IDX}.conf:/opt/oai-nr-ue/etc/channelmod_rfsimu.conf
       - ../bin/mgen:/usr/bin/mgen:ro
+      - /local/logs/mgen:/logs/mgen
     depends_on:
       - oai-gnb
     networks:

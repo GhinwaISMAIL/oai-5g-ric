@@ -94,6 +94,7 @@ services:
     volumes:
       - ./mini_nonrf_config.yaml:/openair-upf/etc/config.yaml
       - ../bin/mgen:/usr/bin/mgen:ro
+      - /local/logs/mgen:/logs/mgen
     # Interfaces are discovered at runtime by subnet: inside the container the
     # order is reversed vs. compose, so match on the address instead of eth0/eth1.
     # N3 (from remote cell-node gNBs) and N4 both ride the public_net side.
@@ -135,6 +136,7 @@ services:
         ipv4_address: 192.168.72.135
     volumes:
       - ../bin/mgen:/usr/bin/mgen:ro
+      - /local/logs/mgen:/logs/mgen
     healthcheck:
       test: /bin/bash -c "ping -c 2 192.168.72.134"
       interval: 10s
