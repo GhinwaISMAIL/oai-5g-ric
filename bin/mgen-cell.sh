@@ -16,6 +16,7 @@ Usage:
   sudo bash bin/mgen-cell.sh send-ul RUN_ID CELL UE PORT RATE SIZE DURATION
   sudo bash bin/mgen-cell.sh listen-dl RUN_ID CELL UE PORT DURATION
   sudo bash bin/mgen-cell.sh count-dl RUN_ID CELL UE
+  sudo bash bin/mgen-cell.sh run-script RUN_ID CELL UE SCRIPT DURATION tx|rx
 EOF
 }
 
@@ -150,6 +151,36 @@ count-dl)
     COUNT=$(docker exec "$C" sh -lc "grep -c RECV '${BASE}.log' 2>/dev/null || true")
     COUNT=${COUNT//[^0-9]/}
     echo "DL_RECV=${COUNT:-0} RX_DELTA=$((RX1 - RX0))"
+    ;;
+
+run-script)
+    [ "$#" -eq 7 ] || { usage; exit 2; }
+    RUN_ID=$2 CELL=$3 UE=$4 SCRIPT=$5 DURATION=$6 MODE=$7
+    require_run_id "$RUN_ID"
+    require_uint CELL "$CELL"
+    require_uint UE "$UE"
+    require_uint DURATION "$DURATION"
+    [[ "$SCRIPT" =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid script name: $SCRIPT"
+    [ "$MODE" = tx ] || [ "$MODE" = rx ] || die "mode must be tx or rx"
+    C=$(ue_container "$CELL" "$UE")
+    IP=$(ensure_ready "$C")
+    CFG="$LOG_DIR_CONTAINER/$SCRIPT"
+    LOG="$LOG_DIR_CONTAINER/${SCRIPT%.mgn}.log"
+    docker exec "$C" test -f "$CFG" || die "$C is missing $CFG"
+    if [ "$MODE" = rx ]; then
+        RX0=$(docker exec "$C" cat /sys/class/net/oaitun_ue1/statistics/rx_packets)
+        printf '%s\n' "$RX0" > "$LOG_DIR_HOST/$RUN_ID-cell${CELL}-ue${UE}.rx0"
+        docker exec -d "$C" bash -lc \
+            "timeout '$((DURATION + 15))' /usr/bin/mgen input '$CFG' output '$LOG'"
+        echo "UE_IP=$IP RX0=$RX0"
+    else
+        TX0=$(docker exec "$C" cat /sys/class/net/oaitun_ue1/statistics/tx_packets)
+        docker exec "$C" bash -lc \
+            "timeout '$((DURATION + 15))' /usr/bin/mgen txlog input '$CFG' output '$LOG'; \
+             rc=\$?; [ \"\$rc\" -eq 0 ] || [ \"\$rc\" -eq 124 ]"
+        TX1=$(docker exec "$C" cat /sys/class/net/oaitun_ue1/statistics/tx_packets)
+        echo "UE_IP=$IP TX_DELTA=$((TX1 - TX0))"
+    fi
     ;;
 
 *)

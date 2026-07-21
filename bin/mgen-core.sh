@@ -18,6 +18,7 @@ Usage:
 
 The external-DN container stores logs under /logs/mgen, bind-mounted from
 /local/logs/mgen on the core host.
+  sudo bash bin/mgen-core.sh run-script RUN_ID SCRIPT DURATION tx|rx
 EOF
 }
 
@@ -122,6 +123,29 @@ send-dl)
          timeout '$((DURATION + 5))' /usr/bin/mgen input '$CFG' output '$LOG'; \
          rc=\$?; [ \"\$rc\" -eq 0 ] || [ \"\$rc\" -eq 124 ]"
     echo "OK: downlink sender completed for cell${CELL}/UE${UE}; log=$LOG"
+    ;;
+
+run-script)
+    [ "$#" -eq 5 ] || { usage; exit 2; }
+    RUN_ID=$2 SCRIPT=$3 DURATION=$4 MODE=$5
+    require_run_id "$RUN_ID"
+    require_uint DURATION "$DURATION"
+    [[ "$SCRIPT" =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid script name: $SCRIPT"
+    [ "$MODE" = tx ] || [ "$MODE" = rx ] || die "mode must be tx or rx"
+    container_running "$DN_C" || die "$DN_C is not running"
+    CFG="$LOG_DIR/$SCRIPT"
+    LOG="$LOG_DIR/${SCRIPT%.mgn}.log"
+    docker exec "$DN_C" test -f "$CFG" || die "$DN_C is missing $CFG"
+    if [ "$MODE" = rx ]; then
+        docker exec -d "$DN_C" bash -lc \
+            "timeout '$((DURATION + 15))' /usr/bin/mgen input '$CFG' output '$LOG'"
+        echo "OK: receiver armed from $SCRIPT; log=$LOG"
+    else
+        docker exec "$DN_C" bash -lc \
+            "timeout '$((DURATION + 15))' /usr/bin/mgen txlog input '$CFG' output '$LOG'; \
+             rc=\$?; [ \"\$rc\" -eq 0 ] || [ \"\$rc\" -eq 124 ]"
+        echo "OK: sender completed from $SCRIPT; log=$LOG"
+    fi
     ;;
 
 *)
