@@ -144,6 +144,9 @@ echo "[CORE] OAI=${ACTUAL_OAI_COMMIT} FlexRIC=${ACTUAL_FLEXRIC_COMMIT}"
 python3 /local/repository/bin/patch-flexric-sqlite-buffers.py \
     /opt/oai-src/openair2/E2AP/flexric/src/xApp/db/sqlite3/sqlite3_wrapper.c \
     || exit 1
+python3 /local/repository/bin/patch-flexric-iapp-log.py \
+    /opt/oai-src/openair2/E2AP/flexric/src/ric/iApps/stdout.c \
+    || exit 1
 git -C /opt/oai-src/openair2/E2AP/flexric diff --check || exit 1
 
 cd /opt/oai-src/openair2/E2AP/flexric

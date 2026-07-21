@@ -65,6 +65,11 @@ The setup pins the validated OAI revision
 checked, idempotent patch that replaces the fixed 2048-byte MAC, RLC, PDCP and GTP
 SQLite aggregation buffers with capacity proportional to the number of records.
 This prevents the `out_len >= max` assertions seen with multiple attached UEs.
+The setup also redirects FlexRIC's redundant iApp indication trace from the
+relative `log.txt` to `/dev/null`. At multi-cell indication rates the upstream
+file is unbounded and was observed to grow to 50 GB, fill the core filesystem,
+and make SQLite fail inside `insert_db`. The normal RIC process log remains at
+`/local/logs/nearRT-RIC.log`, and bounded xApp logs remain under `/local/logs`.
 
 `BUILD.md` documents how the images are built and the constraints that apply.
 
@@ -217,6 +222,10 @@ Measurements are written to a SQLite database at `/tmp/xapp_db_*`:
   can leave the RIC's xApp-facing SCTP state with undrained buffers.
 - **Do not start an xApp automatically.** Started before the gNBs have completed E2
   setup, it crashes and leaves the RIC's xApp-facing state unusable.
+- **Do not restore FlexRIC's relative `log.txt` indication trace.** It records the
+  high-rate service-model stream without rotation. The profile intentionally
+  sends that redundant trace to `/dev/null`; use bounded xApp logs and the compact
+  per-run PRB export for measurements.
 
 Bring-up order, whether automatic or by hand: **core → RIC → gNB → UEs → traffic →
 xApp.**
