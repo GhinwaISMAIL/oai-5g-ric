@@ -4,8 +4,8 @@ Multi-cell OAI 5G SA testbed on POWDER, with a FlexRIC near-RT RIC and per-UE ra
 channel modelling. The RAN is simulated at the PHY layer (RFsim) with a configurable
 channel; the core network, control plane and user plane are real.
 
-Instantiating the POWDER profile brings up the whole system: core network, RIC, one
-or more cells, and their UEs.
+Instantiating the POWDER profile brings up the whole system: core network, RIC,
+one to three reserved cell nodes, and their UEs.
 
 ## Architecture
 
@@ -223,6 +223,7 @@ xApp.**
 
 ## Limits
 
+The profile accepts `num_cells=1..3`; each selected cell consumes one POWDER raw PC.
 The UPF allocates PDU addresses from `12.1.1.0/24`, bounding the total UE count.
 Per-cell UE count is limited by the single `nr-softmodem` process serving the cell;
 scale by adding cells rather than overloading one gNB. A small number of UEs may fail
@@ -232,7 +233,7 @@ handles this.
 ## Layout
 
 ```
-profile.py               POWDER profile: 1 core node + N cell nodes
+profile.py               POWDER profile: 1 core node + 1–3 cell nodes
 BUILD.md                 image builds and the constraints that apply
 bin/node-setup.sh        dispatcher (core | cell)
 bin/core-setup.sh        core: 5G core network, then FlexRIC built and run natively
