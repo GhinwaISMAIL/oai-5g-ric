@@ -160,6 +160,12 @@ cannot be mistaken for valid 5G user-plane traffic.
 
 ## The channel model
 
+The POWDER reservation form exposes `channel_type` (`AWGN`, `TDL_A`, `TDL_B`,
+`TDL_C`, `EPA`, `EVA`, or `ETU`) and `channel_initial_mode` (`uniform` or
+`gradient`). These select the boot-time model. A running experiment changes
+numeric parameters through the verified helper below; it does not hot-swap the
+model family.
+
 Each cell has its own model file, `etc/channelmod-cell<N>.conf`, generated at boot
 with one model per UE (`rfsimu_channel_enB0` for the uplink, and
 `rfsimu_channel_ue0 .. ue(K-1)` for each UE's downlink). Cells can therefore carry
@@ -185,6 +191,24 @@ telnet <ue> 9090
 
 Parameters: `riceanf`, `aoa`, `randaoa`, `ploss`, `noise_power_dB`, `offset`,
 `forgetf`.
+
+The generated gNB and UE commands enable `--telnetsrv` by default. For scripted
+experiments, use `bin/channel-cell.py` on the cell node instead of driving an
+interactive telnet session. It verifies every value after applying it:
+
+```bash
+# Per-UE downlink model (UE2 uses channel model index 2)
+sudo python3 bin/channel-cell.py set --cell 1 --direction dl --ue 2 \
+  --parameter ploss --value 12
+
+# Cell-wide uplink model (the current RFsim topology has one UL model per cell)
+sudo python3 bin/channel-cell.py set --cell 1 --direction ul \
+  --parameter noise_power_dB --value -25
+```
+
+Channel family/type remains a boot-time setting. Runtime schedules may change
+`ploss`, `noise_power_dB`, `riceanf`, `aoa`, `offset`, and `forgetf` after UEs
+have attached. A failed read-back must invalidate a labelled data-collection run.
 
 ## Collecting measurements
 

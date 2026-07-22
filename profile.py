@@ -28,6 +28,10 @@ pc.defineParameter("core_type", "Core node hardware type",
                    portal.ParameterType.NODETYPE, "d430")
 pc.defineParameter("cell_type", "Cell node hardware type",
                    portal.ParameterType.NODETYPE, "d740")
+pc.defineParameter("channel_type", "RFsim channel family",
+                   portal.ParameterType.STRING, "AWGN")
+pc.defineParameter("channel_initial_mode", "Initial per-UE channel layout",
+                   portal.ParameterType.STRING, "uniform")
 
 params = pc.bindParameters()
 
@@ -37,6 +41,14 @@ if params.num_cells > 3:
     pc.reportError(portal.ParameterError("num_cells must be <= 3", ["num_cells"]))
 if params.ues_per_cell < 1:
     pc.reportError(portal.ParameterError("ues_per_cell must be >= 1", ["ues_per_cell"]))
+if params.channel_type not in ("AWGN", "TDL_A", "TDL_B", "TDL_C", "EPA", "EVA", "ETU"):
+    pc.reportError(portal.ParameterError(
+        "channel_type must be AWGN, TDL_A, TDL_B, TDL_C, EPA, EVA, or ETU",
+        ["channel_type"]))
+if params.channel_initial_mode not in ("uniform", "gradient"):
+    pc.reportError(portal.ParameterError(
+        "channel_initial_mode must be uniform or gradient",
+        ["channel_initial_mode"]))
 pc.verifyParameters()
 
 request = pc.makeRequestRSpec()
@@ -56,9 +68,10 @@ def setup(node, role, index):
     node.addService(rspec.Execute(
         shell="bash",
         command=("sudo mkdir -p /local/logs && "
-                 "sudo bash /local/repository/bin/node-setup.sh %s %d %d %d "
+                 "sudo bash /local/repository/bin/node-setup.sh %s %d %d %d %s %s "
                  ">> /local/logs/setup.log 2>&1"
-                 % (role, index, params.num_cells, params.ues_per_cell))))
+                 % (role, index, params.num_cells, params.ues_per_cell,
+                    params.channel_initial_mode, params.channel_type))))
 
 core = request.RawPC("core")
 core.hardware_type = params.core_type
