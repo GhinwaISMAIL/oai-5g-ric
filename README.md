@@ -280,6 +280,9 @@ bin/mgen-run-distributed.sh
 bin/mgen-preflight.sh    compatibility notice for the removed single-host flow
 bin/patch-flexric-sqlite-buffers.py
                          checked MAC/RLC/PDCP/GTP SQLite buffer fix
+bin/patch-flexric-receipt-timestamps.py
+                         preserves RFsim time and records core receipt time for
+                         wall-clock alignment with traffic and channel events
 etc/gnb-cell.conf.tmpl   gNB template: E2 agent, channel model, per-cell identities
 etc/nr-ue.conf.tmpl      UE template
 Dockerfile.flexric       reference build for a containerised RIC (see BUILD.md)
