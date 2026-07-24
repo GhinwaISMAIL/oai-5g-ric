@@ -150,6 +150,13 @@ python3 /local/repository/bin/patch-flexric-receipt-timestamps.py \
 python3 /local/repository/bin/patch-flexric-iapp-log.py \
     /opt/oai-src/openair2/E2AP/flexric/src/ric/iApps/stdout.c \
     || exit 1
+# The patch scripts above insert SQL schema strings with trailing whitespace.
+# git diff --check exits non-zero on whitespace errors, so normalise first or
+# the check below fails on every run and the FlexRIC build never starts.
+sed -i 's/[[:space:]]*$//' \
+    /opt/oai-src/openair2/E2AP/flexric/src/xApp/db/sqlite3/sqlite3_wrapper.c \
+    /opt/oai-src/openair2/E2AP/flexric/src/ric/iApps/stdout.c
+
 git -C /opt/oai-src/openair2/E2AP/flexric diff --check || exit 1
 
 cd /opt/oai-src/openair2/E2AP/flexric
