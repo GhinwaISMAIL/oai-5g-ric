@@ -137,9 +137,9 @@ sed -e "s/@CELL_IDX@/${CELL_IDX}/g" \
     -e "s/@CELL_LAN_IP@/${CELL_LAN_IP}/g" \
     gnb-cell.conf.tmpl > gnb-cell${CELL_IDX}.conf
 
-# One channel model per UE. RFsim needs rfsimu_channel_ue0..ue(K-1); with only
-# ue0 defined, every UE after the first logs "Model rfsimu_channel_ueN not
-# found" and runs with NO channel at all. CHANMOD_MODE/TYPE are overridable.
+# The gNB receiver needs rfsimu_channel_ue0..ue(K-1) for uplink connections.
+# Each UE receiver independently activates rfsimu_channel_enB0 (index 0) for
+# downlink. CHANMOD_MODE/TYPE are overridable.
 CHANMOD_MODE="${CHANMOD_MODE:-uniform}"
 CHANMOD_TYPE="${CHANMOD_TYPE:-AWGN}"
 bash /local/repository/bin/gen-channelmod.sh "${UES_PER_CELL}" \

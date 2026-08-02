@@ -39,3 +39,23 @@ def test_missing_model_is_rejected():
 
 def test_model_identity_is_captured_for_dataset_labels():
     assert MODULE.model_identity(SHOW, 1) == ("rfsimu_channel_ue0", "AWGN")
+
+
+def test_downlink_selects_active_model_zero_in_target_ue(monkeypatch):
+    monkeypatch.setattr(
+        MODULE, "run",
+        lambda *args: "172.21.0.13" if args[0] == "docker" else "",
+    )
+    assert MODULE.endpoint(1, "dl", 3) == (
+        "ric5g-ue-cell1-3", "172.21.0.13", 0,
+    )
+
+
+def test_uplink_is_rejected_until_connection_identity_is_stable():
+    with pytest.raises(RuntimeError, match="UL runtime channel control is disabled"):
+        MODULE.endpoint(1, "ul", None)
+
+
+def test_active_downlink_model_identity_and_value():
+    assert MODULE.model_identity(SHOW, 0) == ("rfsimu_channel_enB0", "AWGN")
+    assert MODULE.observed_value(SHOW, 0, "noise_power_dB") == -30.0

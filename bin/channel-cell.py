@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Read and modify live RFsim channel parameters on one POWDER cell node.
 
-Run this helper as root on the cell node.  The gNB uses host networking, so its
-telnet endpoint is 127.0.0.1:9090 and owns the cell-wide uplink model (index 0).
-Each UE container has its own telnet endpoint and the UE's downlink model index
-matches its one-based UE index inside the cell.
+Run this helper as root on the cell node.  Each UE container is an independent
+RFsim receiver for downlink and activates ``rfsimu_channel_enB0`` at model index
+0.  Selecting the UE container therefore provides per-UE DL control; selecting
+an index based on the UE number only modifies an inactive table entry.
+
+The gNB activates ``rfsimu_channel_ueN`` models for uplink connections, but
+their connection-to-UE identity is not stable after reconnects.  UL mutation is
+rejected until that identity can be proven rather than mislabeled as cell-wide
+or per-UE control.
 
 Only parameters whose value can be read back unambiguously are accepted.  A
 successful ``set`` therefore means both the command and its verification passed.
@@ -43,7 +48,9 @@ def container_running(name: str) -> bool:
 
 def endpoint(cell: int, direction: str, ue: int | None) -> tuple[str, str, int]:
     if direction == "ul":
-        return f"ric5g-gnb-cell{cell}", "127.0.0.1", 0
+        raise RuntimeError(
+            "UL runtime channel control is disabled: active gNB RFsim model "
+            "indices follow connection state and cannot be mapped safely to a UE")
     if ue is None or ue < 1:
         raise ValueError("downlink control requires --ue >= 1")
     container = f"ric5g-ue-cell{cell}-{ue}"
@@ -52,7 +59,7 @@ def endpoint(cell: int, direction: str, ue: int | None) -> tuple[str, str, int]:
         "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", container)
     if not address:
         raise RuntimeError(f"{container} has no Docker address")
-    return container, address, ue
+    return container, address, 0
 
 
 def receive_available(sock: socket.socket, *, first_timeout: float = 1.5) -> str:

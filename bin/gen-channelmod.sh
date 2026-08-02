@@ -7,10 +7,11 @@
 #         gradient — path loss increases UE1 -> UEK (cell-centre to cell-edge)
 #   type: AWGN (default) | TDL_A | TDL_B | TDL_C | EPA | EVA | ETU
 #
-# RFsim needs one model per UE: the gNB applies rfsimu_channel_enB0 on the
-# uplink, and each UE applies its own rfsimu_channel_ue<N> on the downlink.
-# With only ue0 defined, UE2 onward log "Model rfsimu_channel_ue1 not found"
-# and run with no channel at all -- so this must scale with ues_per_cell.
+# RFsim needs one model per UE on the gNB receiver for uplink.  Each independent
+# UE receiver applies rfsimu_channel_enB0 (index 0) on downlink, so per-UE DL
+# control selects the UE container and modifies index 0 there.  The gNB applies
+# rfsimu_channel_ue<N> models to uplink connections; their UE identity is not
+# stable across reconnects, so runtime UL mutation remains disabled.
 #
 # Values here are the initial state. They can be changed at runtime per model
 # over telnet (channelmod modify <idx> ploss|noise_power_dB|riceanf|... ), and
