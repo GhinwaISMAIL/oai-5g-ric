@@ -52,7 +52,7 @@ apply file-based channel models and carry no E2 agent.
 | image | contents |
 |-------|----------|
 | `ghinwa555/oai-gnb-e2-chan:v2` | gNB with RFsim, channel model, telnet server, E2 agent |
-| `ghinwa555/oai-nr-ue-chan:v2` | UE with RFsim, channel model, telnet server |
+| `ghinwa555/oai-nr-ue-chan:v3` | UE with RFsim, channel model, telnet server, per-second serving-cell measurements |
 
 The near-RT RIC runs as a host process on the core node, built from OAI's FlexRIC
 submodule at boot. It is not containerised: a RIC built from the standalone FlexRIC
@@ -172,8 +172,9 @@ with one model per UE (`rfsimu_channel_enB0` for the uplink, and
 different channel conditions, and UEs within a cell can differ from one another.
 
 `bin/gen-channelmod.sh` produces the file. It supports a `uniform` mode (all UEs
-identical) and a `gradient` mode (path loss increasing from cell centre to cell
-edge), and any of AWGN, TDL-A/B/C, EPA, EVA or ETU.
+identical) and a `gradient` mode (path gain decreasing from cell centre to cell
+edge), and any of AWGN, TDL-A/B/C, EPA, EVA or ETU. RFsim applies
+`10^(ploss/20)`, so negative `ploss` values attenuate the signal.
 
 The default is a quiet channel, deliberately. **Noise gates random access**: at
 `noise_power_dB` of −4/−2 no UE completes RACH — they synchronise, decode SIB1, and
@@ -199,7 +200,7 @@ interactive telnet session. It verifies every value after applying it:
 ```bash
 # Per-UE downlink model (UE2 uses channel model index 2)
 sudo python3 bin/channel-cell.py set --cell 1 --direction dl --ue 2 \
-  --parameter ploss --value 12
+  --parameter ploss --value -12
 
 # Cell-wide uplink model (the current RFsim topology has one UL model per cell)
 sudo python3 bin/channel-cell.py set --cell 1 --direction ul \
@@ -240,6 +241,7 @@ Measurements are written to a SQLite database at `/tmp/xapp_db_*`:
   must be restarted after the RIC.
 - **Restarting a gNB drops all of its UEs.** They need an explicit restart, and their
   data-network routes re-applied.
+
 - **Stop an xApp with `Ctrl-C`/`SIGINT`, never `SIGKILL`.** A clean interrupt sends
   subscription-delete requests and waits for their responses. Confirm
   `Successfully stopped` and `Test xApp run SUCCESSFULLY` in the log. Force-killing
@@ -253,6 +255,27 @@ Measurements are written to a SQLite database at `/tmp/xapp_db_*`:
 
 Bring-up order, whether automatic or by hand: **core → RIC → gNB → UEs → traffic →
 xApp.**
+
+## UE radio measurement image
+
+The calibration UE image is built from the pinned OAI commit and adds one
+structured `UE_RADIO_V1` line for every completed UTC second. Each line reports
+the serving SSB index, sample count, SS-RSRP, SS-RSRQ, and SS-SINR. SS-RSRQ is
+calculated over the same 20 SSB resource blocks as SS-RSRP.
+
+On an x86_64 build host with Docker and a clean checkout of the pinned OAI
+source:
+
+```bash
+sudo /local/repository/bin/build-ue-radio-image.sh \
+  /opt/oai-radio-build \
+  ghinwa555/oai-nr-ue-chan:v3
+```
+
+The build script refuses any other OAI revision, applies the measurement patch
+idempotently, and compiles only the NR UE target. The runtime is derived from
+the validated `v2` image, with only the pinned `nr-uesoftmodem` binary replaced.
+Building a new tag does not replace the existing `v2` image.
 
 ## Limits
 

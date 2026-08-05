@@ -1,0 +1,31 @@
+ARG BASE_UE_IMAGE=ghinwa555/oai-nr-ue-chan:v2
+
+FROM ran-base:latest AS ue-radio-build
+
+WORKDIR /oai-ran
+COPY . .
+
+RUN --mount=type=cache,target=/root/.cache/ccache/ \
+    --mount=type=cache,target=/root/.cache/cpm/ \
+    /bin/sh oaienv && \
+    cd cmake_targets && \
+    mkdir -p log && \
+    ./build_oai -c --ninja \
+      --nrUE \
+      --build-lib "telnetsrv nrscope" \
+      -w USRP -t Ethernet -w BLADERF \
+      --cmake-opt -DOAI_VRTSIM_TAPS_CLIENT=ON \
+      -w ZMQ \
+      --noavx512 \
+      --build-tool-opt -k10 \
+      --cmake-opt -DT_RECORD_DB=ON \
+      --cmake-opt -DCMAKE_C_FLAGS="-Werror" \
+      --cmake-opt -DCMAKE_CXX_FLAGS="-Werror"
+
+FROM ${BASE_UE_IMAGE} AS oai-nr-ue-radio
+
+COPY --from=ue-radio-build \
+    /oai-ran/cmake_targets/ran_build/build/nr-uesoftmodem \
+    /opt/oai-nr-ue/bin/nr-uesoftmodem
+
+RUN ldd /opt/oai-nr-ue/bin/nr-uesoftmodem
