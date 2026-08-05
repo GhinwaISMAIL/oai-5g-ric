@@ -117,7 +117,7 @@ echo "[CELL${CELL_IDX}] Core reachable."
 # 4. Pull images
 # ------------------------------------------------------------------ #
 docker pull ghinwa555/oai-gnb-e2-chan:v2
-docker pull ghinwa555/oai-nr-ue-chan:v2
+docker pull ghinwa555/oai-nr-ue-chan:v3
 
 # ------------------------------------------------------------------ #
 # 5. Generate this cell's gNB config
@@ -190,7 +190,7 @@ for u in $(seq 1 "${UES_PER_CELL}"); do
 
   oai-nr-ue${u}:
     container_name: ric5g-ue-cell${CELL_IDX}-${u}
-    image: ghinwa555/oai-nr-ue-chan:v2
+    image: ghinwa555/oai-nr-ue-chan:v3
     cap_drop:
       - ALL
     cap_add:

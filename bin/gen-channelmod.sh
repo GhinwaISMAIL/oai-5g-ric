@@ -4,7 +4,7 @@
 #
 # Usage: gen-channelmod.sh <ues_per_cell> <out_file> [mode] [type]
 #   mode: uniform  — every UE gets identical channel parameters (default)
-#         gradient — path loss increases UE1 -> UEK (cell-centre to cell-edge)
+#         gradient — path gain decreases UE1 -> UEK (cell-centre to cell-edge)
 #   type: AWGN (default) | TDL_A | TDL_B | TDL_C | EPA | EVA | ETU
 #
 # RFsim needs one model per UE on the gNB receiver for uplink.  Each independent
@@ -35,8 +35,9 @@ PLOSS_BASE=0
 NOISE_GNB=-30
 NOISE_UE=-30
 
-# gradient: spread path loss from PLOSS_BASE to PLOSS_BASE + PLOSS_SPAN
-PLOSS_SPAN=30
+# RFsim applies 10^(ploss/20), so negative values attenuate the signal.
+# gradient: spread path gain from 0 dB to -30 dB.
+PLOSS_SPAN=-30
 
 emit_model() {
     local name="$1" ploss="$2" noise="$3" trailing="$4"
