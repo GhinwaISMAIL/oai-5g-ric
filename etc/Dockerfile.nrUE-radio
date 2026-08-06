@@ -28,4 +28,9 @@ COPY --from=ue-radio-build \
     /oai-ran/cmake_targets/ran_build/build/nr-uesoftmodem \
     /opt/oai-nr-ue/bin/nr-uesoftmodem
 
-RUN ldd /opt/oai-nr-ue/bin/nr-uesoftmodem
+COPY --from=ue-radio-build \
+    /oai-ran/cmake_targets/ran_build/build/librfsimulator.so \
+    /usr/local/lib/librfsimulator.so
+
+RUN ldd /opt/oai-nr-ue/bin/nr-uesoftmodem && \
+    test -f /usr/local/lib/librfsimulator.so

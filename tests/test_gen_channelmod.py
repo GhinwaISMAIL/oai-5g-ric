@@ -23,6 +23,8 @@ def test_gradient_uses_negative_path_gain_for_attenuation(tmp_path):
 
 def test_cell_setup_uses_measurement_image():
     text = (REPOSITORY / "bin" / "cell-setup.sh").read_text()
+    ue_config = (REPOSITORY / "etc" / "nr-ue.conf.tmpl").read_text()
 
-    assert text.count("ghinwa555/oai-nr-ue-chan:v3") == 2
+    assert text.count("ghinwa555/oai-nr-ue-chan:v4") == 2
+    assert "rsrp_offset_dB = -56.0;" in ue_config
     assert "ghinwa555/oai-nr-ue-chan:v2" not in text

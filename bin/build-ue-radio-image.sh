@@ -6,6 +6,7 @@ IMAGE_TAG="${2:?usage: build-ue-radio-image.sh OAI_SOURCE IMAGE_TAG}"
 EXPECTED_OAI_COMMIT="70508ebaf52f2aae420566d380c6537f2efb9f0c"
 RUNNER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 MEASUREMENT_SOURCE="$SOURCE_DIR/openair1/PHY/NR_UE_ESTIMATION/nr_ue_measurements.c"
+RFSIMULATOR_SOURCE="$SOURCE_DIR/radio/rfsimulator/simulator.cpp"
 
 [ "$(uname -m)" = "x86_64" ] || {
     echo "the OAI radio image must be built on an x86_64 host" >&2
@@ -23,7 +24,8 @@ ACTUAL_OAI_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
 }
 
 python3 "$RUNNER_DIR/patch-oai-ue-radio-measurements.py" "$MEASUREMENT_SOURCE"
-git -C "$SOURCE_DIR" diff --check -- "$MEASUREMENT_SOURCE"
+python3 "$RUNNER_DIR/patch-oai-rfsim-rsrp-calibration.py" "$RFSIMULATOR_SOURCE"
+git -C "$SOURCE_DIR" diff --check -- "$MEASUREMENT_SOURCE" "$RFSIMULATOR_SOURCE"
 
 docker build \
     --target ran-base \
