@@ -53,6 +53,7 @@ apply file-based channel models and carry no E2 agent.
 |-------|----------|
 | `ghinwa555/oai-gnb-e2-chan:v2` | gNB with RFsim, channel model, telnet server, E2 agent |
 | `ghinwa555/oai-nr-ue-chan:v3` | UE with RFsim, channel model, telnet server, per-second serving-cell measurements |
+| `ghinwa555/oai-nr-ue-chan:v4` | v3 measurements plus an explicit RFsim RSRP reporting-scale offset |
 
 The near-RT RIC runs as a host process on the core node, built from OAI's FlexRIC
 submodule at boot. It is not containerised: a RIC built from the standalone FlexRIC
@@ -263,18 +264,25 @@ structured `UE_RADIO_V1` line for every completed UTC second. Each line reports
 the serving SSB index, sample count, SS-RSRP, SS-RSRQ, and SS-SINR. SS-RSRQ is
 calculated over the same 20 SSB resource blocks as SS-RSRP.
 
+RFsim does not model a hardware receive-gain calibration and resets its receive
+gain metadata to zero. The v4 image adds `rfsimulator.rsrp_offset_dB`, which
+changes only the absolute power reporting scale. It does not scale IQ samples or
+change SS-SINR. The profile uses `-56.0 dB`, mapping the healthy zero-loss RFsim
+baseline from about `-41 dBm` to the strongest steady reference at `-97 dBm`.
+
 On an x86_64 build host with Docker and a clean checkout of the pinned OAI
 source:
 
 ```bash
 sudo /local/repository/bin/build-ue-radio-image.sh \
   /opt/oai-radio-build \
-  ghinwa555/oai-nr-ue-chan:v3
+  ghinwa555/oai-nr-ue-chan:v4
 ```
 
-The build script refuses any other OAI revision, applies the measurement patch
-idempotently, and compiles only the NR UE target. The runtime is derived from
-the validated `v2` image, with only the pinned `nr-uesoftmodem` binary replaced.
+The build script refuses any other OAI revision, applies the measurement and
+RSRP scale patches idempotently, and compiles only the NR UE target. The runtime
+is derived from the validated `v2` image, with the pinned `nr-uesoftmodem`
+binary and RFsim device library replaced.
 Building a new tag does not replace the existing `v2` image.
 
 ## Limits
