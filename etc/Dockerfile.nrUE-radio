@@ -1,4 +1,5 @@
 ARG BASE_UE_IMAGE=ghinwa555/oai-nr-ue-chan:v2
+ARG BASE_GNB_IMAGE=ghinwa555/oai-gnb-e2-chan:v2
 
 FROM ran-base:latest AS ue-radio-build
 
@@ -34,3 +35,11 @@ COPY --from=ue-radio-build \
 
 RUN ldd /opt/oai-nr-ue/bin/nr-uesoftmodem && \
     test -f /usr/local/lib/librfsimulator.so
+
+FROM ${BASE_GNB_IMAGE} AS oai-gnb-rfsim
+
+COPY --from=ue-radio-build \
+    /oai-ran/cmake_targets/ran_build/build/librfsimulator.so \
+    /usr/local/lib/librfsimulator.so
+
+RUN test -f /usr/local/lib/librfsimulator.so

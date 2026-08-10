@@ -49,6 +49,7 @@ class PatchOaiRfsimRsrpCalibrationTest(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("/usr/local/lib/librfsimulator.so", dockerfile)
+        self.assertIn("AS oai-gnb-rfsim", dockerfile)
 
     def test_adds_scale_offset_and_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

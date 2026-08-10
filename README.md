@@ -52,8 +52,14 @@ apply file-based channel models and carry no E2 agent.
 | image | contents |
 |-------|----------|
 | `ghinwa555/oai-gnb-e2-chan:v2` | gNB with RFsim, channel model, telnet server, E2 agent |
+| `ghinwa555/oai-gnb-e2-chan:v3` | v2 with the repaired configured-fading RFsim library |
 | `ghinwa555/oai-nr-ue-chan:v3` | UE with RFsim, channel model, telnet server, per-second serving-cell measurements |
 | `ghinwa555/oai-nr-ue-chan:v4` | v3 measurements plus an explicit RFsim RSRP reporting-scale offset |
+| `ghinwa555/oai-nr-ue-chan:v5` | v4 with repaired RNG initialization and configured-fading channel state |
+
+AWGN reservations retain the validated gNB v2 and UE v4 images. TDL, EPA, and
+EVA reservations use gNB v3 and UE v5. `OAI_GNB_IMAGE` and `OAI_UE_IMAGE`
+can override this selection without changing the profile defaults.
 
 The near-RT RIC runs as a host process on the core node, built from OAI's FlexRIC
 submodule at boot. It is not containerised: a RIC built from the standalone FlexRIC
@@ -162,7 +168,7 @@ cannot be mistaken for valid 5G user-plane traffic.
 ## The channel model
 
 The POWDER reservation form exposes `channel_type` (`AWGN`, `TDL_A`, `TDL_B`,
-`TDL_C`, `EPA`, `EVA`, or `ETU`) and `channel_initial_mode` (`uniform` or
+`TDL_C`, `EPA`, or `EVA`) and `channel_initial_mode` (`uniform` or
 `gradient`). These select the boot-time model. A running experiment changes
 numeric parameters through the verified helper below; it does not hot-swap the
 model family.
@@ -174,8 +180,14 @@ different channel conditions, and UEs within a cell can differ from one another.
 
 `bin/gen-channelmod.sh` produces the file. It supports a `uniform` mode (all UEs
 identical) and a `gradient` mode (path gain decreasing from cell centre to cell
-edge), and any of AWGN, TDL-A/B/C, EPA, EVA or ETU. RFsim applies
+edge), and any validated reservation family: AWGN, TDL-A/B/C, EPA, or EVA. RFsim applies
 `10^(ploss/20)`, so negative `ploss` values attenuate the signal.
+TDL-A/B/C use a 30 ns delay spread; a zero delay spread creates a zero-length
+TDL channel and is rejected by the profile tests.
+
+ETU is not offered by the reservation profile. Its stock delay profile did not
+complete initial NR synchronization in the validated 106-PRB, numerology-1
+baseline; it should only be reconsidered with a separately validated waveform.
 
 The default is a quiet channel, deliberately. **Noise gates random access**: at
 `noise_power_dB` of −4/−2 no UE completes RACH — they synchronise, decode SIB1, and
@@ -276,14 +288,16 @@ source:
 ```bash
 sudo /local/repository/bin/build-ue-radio-image.sh \
   /opt/oai-radio-build \
-  ghinwa555/oai-nr-ue-chan:v4
+  ghinwa555/oai-nr-ue-chan:v5 \
+  ghinwa555/oai-gnb-e2-chan:v3
 ```
 
 The build script refuses any other OAI revision, applies the measurement and
-RSRP scale patches idempotently, and compiles only the NR UE target. The runtime
-is derived from the validated `v2` image, with the pinned `nr-uesoftmodem`
-binary and RFsim device library replaced.
-Building a new tag does not replace the existing `v2` image.
+RSRP scale patches and the configured-fading repairs idempotently, and compiles
+the NR UE target. The UE runtime is derived from the validated UE image, with
+the pinned `nr-uesoftmodem` binary and RFsim device library replaced. When a gNB
+tag is supplied, the same RFsim library is overlaid on the validated gNB image.
+Building new tags does not replace the existing images.
 
 ## Limits
 

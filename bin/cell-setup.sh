@@ -18,6 +18,25 @@ set +e
 CELL_IDX="${1:-1}"
 NUM_CELLS="${2:-2}"
 UES_PER_CELL="${3:-12}"
+CHANMOD_MODE="${CHANMOD_MODE:-uniform}"
+CHANMOD_TYPE="${CHANMOD_TYPE:-AWGN}"
+
+case "${CHANMOD_TYPE}" in
+    AWGN)
+        DEFAULT_GNB_IMAGE="ghinwa555/oai-gnb-e2-chan:v2"
+        DEFAULT_UE_IMAGE="ghinwa555/oai-nr-ue-chan:v4"
+        ;;
+    TDL_A|TDL_B|TDL_C|EPA|EVA)
+        DEFAULT_GNB_IMAGE="ghinwa555/oai-gnb-e2-chan:v3"
+        DEFAULT_UE_IMAGE="ghinwa555/oai-nr-ue-chan:v5"
+        ;;
+    *)
+        echo "[CELL${CELL_IDX}] ERROR: unsupported channel type '${CHANMOD_TYPE}'"
+        exit 2
+        ;;
+esac
+GNB_IMAGE="${OAI_GNB_IMAGE:-${DEFAULT_GNB_IMAGE}}"
+UE_IMAGE="${OAI_UE_IMAGE:-${DEFAULT_UE_IMAGE}}"
 
 CORE_LAN_IP="10.10.1.1"
 CELL_LAN_IP="10.10.1.$((10 + CELL_IDX))"
@@ -116,8 +135,9 @@ echo "[CELL${CELL_IDX}] Core reachable."
 # ------------------------------------------------------------------ #
 # 4. Pull images
 # ------------------------------------------------------------------ #
-docker pull ghinwa555/oai-gnb-e2-chan:v2
-docker pull ghinwa555/oai-nr-ue-chan:v4
+echo "[CELL${CELL_IDX}] channel=${CHANMOD_TYPE}; gNB image=${GNB_IMAGE}; UE image=${UE_IMAGE}"
+docker pull "${GNB_IMAGE}"
+docker pull "${UE_IMAGE}"
 
 # ------------------------------------------------------------------ #
 # 5. Generate this cell's gNB config
@@ -140,8 +160,6 @@ sed -e "s/@CELL_IDX@/${CELL_IDX}/g" \
 # The gNB receiver needs rfsimu_channel_ue0..ue(K-1) for uplink connections.
 # Each UE receiver independently activates rfsimu_channel_enB0 (index 0) for
 # downlink. CHANMOD_MODE/TYPE are overridable.
-CHANMOD_MODE="${CHANMOD_MODE:-uniform}"
-CHANMOD_TYPE="${CHANMOD_TYPE:-AWGN}"
 bash /local/repository/bin/gen-channelmod.sh "${UES_PER_CELL}" \
      "channelmod-cell${CELL_IDX}.conf" "${CHANMOD_MODE}" "${CHANMOD_TYPE}"
 
@@ -158,7 +176,7 @@ cat > "${COMPOSE}" <<EOF
 services:
   oai-gnb:
     container_name: ric5g-gnb-cell${CELL_IDX}
-    image: ghinwa555/oai-gnb-e2-chan:v2
+    image: ${GNB_IMAGE}
     network_mode: host
     cap_drop:
       - ALL
@@ -190,7 +208,7 @@ for u in $(seq 1 "${UES_PER_CELL}"); do
 
   oai-nr-ue${u}:
     container_name: ric5g-ue-cell${CELL_IDX}-${u}
-    image: ghinwa555/oai-nr-ue-chan:v4
+    image: ${UE_IMAGE}
     cap_drop:
       - ALL
     cap_add:

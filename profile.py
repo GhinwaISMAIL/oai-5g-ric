@@ -41,9 +41,9 @@ if params.num_cells > 3:
     pc.reportError(portal.ParameterError("num_cells must be <= 3", ["num_cells"]))
 if params.ues_per_cell < 1:
     pc.reportError(portal.ParameterError("ues_per_cell must be >= 1", ["ues_per_cell"]))
-if params.channel_type not in ("AWGN", "TDL_A", "TDL_B", "TDL_C", "EPA", "EVA", "ETU"):
+if params.channel_type not in ("AWGN", "TDL_A", "TDL_B", "TDL_C", "EPA", "EVA"):
     pc.reportError(portal.ParameterError(
-        "channel_type must be AWGN, TDL_A, TDL_B, TDL_C, EPA, EVA, or ETU",
+        "channel_type must be AWGN, TDL_A, TDL_B, TDL_C, EPA, or EVA",
         ["channel_type"]))
 if params.channel_initial_mode not in ("uniform", "gradient"):
     pc.reportError(portal.ParameterError(

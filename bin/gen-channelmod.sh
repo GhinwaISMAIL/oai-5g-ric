@@ -25,6 +25,15 @@ OUT="${2:-channelmod.conf}"
 MODE="${3:-uniform}"
 TYPE="${4:-AWGN}"
 
+case "${TYPE}" in
+    TDL_A|TDL_B|TDL_C)
+        DS_TDL=0.00000003
+        ;;
+    *)
+        DS_TDL=0
+        ;;
+esac
+
 # Baseline: a quiet channel that permits RACH.
 # NOTE: with chanmod actually ACTIVE (it was inert on the stock image), noise
 # matters. At noise_power_dB = -4/-2 the RACH preamble/RAR exchange fails and
@@ -49,7 +58,7 @@ emit_model() {
       noise_power_dB = ${noise};
       forgetfact     = 0;
       offset         = 0;
-      ds_tdl         = 0;
+      ds_tdl         = ${DS_TDL};
     }${trailing}
 EOF
 }
