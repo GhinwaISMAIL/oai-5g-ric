@@ -30,6 +30,8 @@ pc.defineParameter("cell_type", "Cell node hardware type",
                    portal.ParameterType.NODETYPE, "d740")
 pc.defineParameter("channel_type", "RFsim channel family",
                    portal.ParameterType.STRING, "AWGN")
+pc.defineParameter("tdl_delay_spread_ns", "TDL RMS delay spread (ns)",
+                   portal.ParameterType.INTEGER, 30)
 pc.defineParameter("channel_initial_mode", "Initial per-UE channel layout",
                    portal.ParameterType.STRING, "uniform")
 
@@ -45,6 +47,10 @@ if params.channel_type not in ("AWGN", "TDL_A", "TDL_B", "TDL_C", "EPA", "EVA"):
     pc.reportError(portal.ParameterError(
         "channel_type must be AWGN, TDL_A, TDL_B, TDL_C, EPA, or EVA",
         ["channel_type"]))
+if params.tdl_delay_spread_ns not in (10, 30, 100):
+    pc.reportError(portal.ParameterError(
+        "tdl_delay_spread_ns must be 10, 30, or 100",
+        ["tdl_delay_spread_ns"]))
 if params.channel_initial_mode not in ("uniform", "gradient"):
     pc.reportError(portal.ParameterError(
         "channel_initial_mode must be uniform or gradient",
@@ -68,10 +74,11 @@ def setup(node, role, index):
     node.addService(rspec.Execute(
         shell="bash",
         command=("sudo mkdir -p /local/logs && "
-                 "sudo bash /local/repository/bin/node-setup.sh %s %d %d %d %s %s "
+                 "sudo bash /local/repository/bin/node-setup.sh %s %d %d %d %s %s %d "
                  ">> /local/logs/setup.log 2>&1"
                  % (role, index, params.num_cells, params.ues_per_cell,
-                    params.channel_initial_mode, params.channel_type))))
+                    params.channel_initial_mode, params.channel_type,
+                    params.tdl_delay_spread_ns))))
 
 core = request.RawPC("core")
 core.hardware_type = params.core_type

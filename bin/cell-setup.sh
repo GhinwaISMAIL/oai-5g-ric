@@ -20,6 +20,7 @@ NUM_CELLS="${2:-2}"
 UES_PER_CELL="${3:-12}"
 CHANMOD_MODE="${CHANMOD_MODE:-uniform}"
 CHANMOD_TYPE="${CHANMOD_TYPE:-AWGN}"
+CHANMOD_DS_TDL_NS="${CHANMOD_DS_TDL_NS:-30}"
 
 case "${CHANMOD_TYPE}" in
     AWGN)
@@ -135,7 +136,7 @@ echo "[CELL${CELL_IDX}] Core reachable."
 # ------------------------------------------------------------------ #
 # 4. Pull images
 # ------------------------------------------------------------------ #
-echo "[CELL${CELL_IDX}] channel=${CHANMOD_TYPE}; gNB image=${GNB_IMAGE}; UE image=${UE_IMAGE}"
+echo "[CELL${CELL_IDX}] channel=${CHANMOD_TYPE}; tdl_delay_spread_ns=${CHANMOD_DS_TDL_NS}; gNB image=${GNB_IMAGE}; UE image=${UE_IMAGE}"
 docker pull "${GNB_IMAGE}"
 docker pull "${UE_IMAGE}"
 
@@ -161,7 +162,8 @@ sed -e "s/@CELL_IDX@/${CELL_IDX}/g" \
 # Each UE receiver independently activates rfsimu_channel_enB0 (index 0) for
 # downlink. CHANMOD_MODE/TYPE are overridable.
 bash /local/repository/bin/gen-channelmod.sh "${UES_PER_CELL}" \
-     "channelmod-cell${CELL_IDX}.conf" "${CHANMOD_MODE}" "${CHANMOD_TYPE}"
+     "channelmod-cell${CELL_IDX}.conf" "${CHANMOD_MODE}" "${CHANMOD_TYPE}" \
+     "${CHANMOD_DS_TDL_NS}"
 
 echo "[CELL${CELL_IDX}] gNB config generated:"
 grep -E "gNB_ID|physCellId|nr_cellid|amf_ip|near_ric|options|min_rxtxtime|GNB_IPV4" \

@@ -169,9 +169,10 @@ cannot be mistaken for valid 5G user-plane traffic.
 
 The POWDER reservation form exposes `channel_type` (`AWGN`, `TDL_A`, `TDL_B`,
 `TDL_C`, `EPA`, or `EVA`) and `channel_initial_mode` (`uniform` or
-`gradient`). These select the boot-time model. A running experiment changes
-numeric parameters through the verified helper below; it does not hot-swap the
-model family.
+`gradient`). For TDL-A/B/C it also exposes `tdl_delay_spread_ns` (10, 30, or
+100 ns, default 30 ns). These select the boot-time model. A running experiment
+changes numeric parameters through the verified helper below; it does not
+hot-swap the model family or delay spread.
 
 Each cell has its own model file, `etc/channelmod-cell<N>.conf`, generated at boot
 with one model per UE (`rfsimu_channel_enB0` for the uplink, and
@@ -182,8 +183,10 @@ different channel conditions, and UEs within a cell can differ from one another.
 identical) and a `gradient` mode (path gain decreasing from cell centre to cell
 edge), and any validated reservation family: AWGN, TDL-A/B/C, EPA, or EVA. RFsim applies
 `10^(ploss/20)`, so negative `ploss` values attenuate the signal.
-TDL-A/B/C use a 30 ns delay spread; a zero delay spread creates a zero-length
-TDL channel and is rejected by the profile tests.
+TDL-A/B/C use the selected 10, 30, or 100 ns delay spread. The 30 ns default
+preserves the established profile behaviour. A zero delay spread creates a
+zero-length TDL channel and is rejected by the profile tests. Non-TDL families
+continue to write `ds_tdl = 0` because that field does not configure them.
 
 ETU is not offered by the reservation profile. Its stock delay profile did not
 complete initial NR synchronization in the validated 106-PRB, numerology-1

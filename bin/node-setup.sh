@@ -2,7 +2,7 @@
 # =============================================================================
 # node-setup.sh — dispatcher, called by profile.py on every node
 #
-# Usage: node-setup.sh <role> <index> <num_cells> <ues_per_cell> [channel_mode] [channel_type]
+# Usage: node-setup.sh <role> <index> <num_cells> <ues_per_cell> [channel_mode] [channel_type] [tdl_delay_spread_ns]
 #   role = core | cell
 # =============================================================================
 
@@ -14,11 +14,12 @@ NUM_CELLS="$3"
 UES_PER_CELL="$4"
 CHANNEL_MODE="${5:-uniform}"
 CHANNEL_TYPE="${6:-AWGN}"
+TDL_DELAY_SPREAD_NS="${7:-30}"
 
 mkdir -p /local/logs
 chmod +x /local/repository/bin/*.sh
 
-echo "[NODE-SETUP] role=${ROLE} index=${INDEX} num_cells=${NUM_CELLS} ues=${UES_PER_CELL} channel=${CHANNEL_MODE}/${CHANNEL_TYPE}"
+echo "[NODE-SETUP] role=${ROLE} index=${INDEX} num_cells=${NUM_CELLS} ues=${UES_PER_CELL} channel=${CHANNEL_MODE}/${CHANNEL_TYPE} tdl_delay_spread_ns=${TDL_DELAY_SPREAD_NS}"
 
 case "$ROLE" in
     core)
@@ -26,6 +27,7 @@ case "$ROLE" in
         ;;
     cell)
         exec env CHANMOD_MODE="$CHANNEL_MODE" CHANMOD_TYPE="$CHANNEL_TYPE" \
+            CHANMOD_DS_TDL_NS="$TDL_DELAY_SPREAD_NS" \
             bash /local/repository/bin/cell-setup.sh "$INDEX" "$NUM_CELLS" "$UES_PER_CELL"
         ;;
     *)
