@@ -49,6 +49,21 @@ def test_override_is_one_gnb_one_ue_cirdb_and_shared_ipc(tmp_path: Path) -> None
     assert "--rfsim" not in override
 
 
+def test_passthrough_override_changes_only_channel_processing(tmp_path: Path) -> None:
+    override = MODULE.render_override(
+        tmp_path / "trace",
+        tmp_path / "shared",
+        channel_mode="passthrough",
+        server_timescale=1.0,
+    )
+
+    assert "--device.name vrtsim" in override
+    assert override.count("ipc: host") == 2
+    assert "--vrtsim.timescale 1" in override
+    assert "--vrtsim.cirdb" not in override
+    assert "/cirdb" not in override
+
+
 def test_cirdb_debug_parser_requires_every_field() -> None:
     _, gnb = _healthy_logs(2)
     rows = MODULE.parse_cirdb_debug(gnb)
@@ -120,6 +135,26 @@ def test_replay_evaluator_rejects_snapshot_gap() -> None:
 
     assert result["replay_pass"] is False
     assert result["gate_results"]["maximum_consecutive_skipped"] is False
+
+
+def test_passthrough_evaluator_does_not_require_cirdb_rows() -> None:
+    ue, _ = _healthy_logs(31)
+    gnb = "PUSCH Target 200 RSSI thresh 0 Failure 10"
+    checks = [
+        {"attached": True, "epoch": float(index)} for index in range(31)
+    ]
+    result = MODULE.evaluate_replay(
+        ue_log=ue,
+        gnb_log=gnb,
+        attachment_checks=checks,
+        ping_output="30 packets transmitted, 30 received, 0% packet loss, time 30000ms",
+        require_cirdb=False,
+        minimum_telemetry_seconds=20.0,
+    )
+
+    assert result["replay_pass"] is True
+    assert result["cirdb_debug_rows"] == 0
+    assert "trace_cycle_coverage" not in result["gate_results"]
 
 
 def test_attachment_failure_captures_logs_before_rollback(

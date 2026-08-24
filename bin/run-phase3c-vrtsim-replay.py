@@ -127,7 +127,24 @@ def wait_gnb_healthy(timeout_seconds: float) -> None:
     raise ReplayError(f"{GNB_CONTAINER} was not healthy within {timeout_seconds:.0f} seconds")
 
 
-def render_override(trace_dir: Path, shared_tmp: Path) -> str:
+def render_override(
+    trace_dir: Path,
+    shared_tmp: Path,
+    *,
+    channel_mode: str = "cirdb",
+    server_timescale: float = 1.0,
+) -> str:
+    if channel_mode not in {"cirdb", "passthrough"}:
+        raise ReplayError(f"unsupported channel mode: {channel_mode}")
+    channel_options = ""
+    trace_volume = ""
+    if channel_mode == "cirdb":
+        channel_options = (
+            " --vrtsim.cirdb 1 --vrtsim.cirdb-path /cirdb"
+            " --vrtsim.cirdb_model_id 1 --vrtsim.cirdb_ds_ns 30"
+            " --vrtsim.cirdb_speed_mps 1.5"
+        )
+        trace_volume = f"\n      - {trace_dir}:/cirdb:ro"
     return f'''services:
   {GNB_SERVICE}:
     image: {GNB_IMAGE}
@@ -135,10 +152,9 @@ def render_override(trace_dir: Path, shared_tmp: Path) -> str:
     environment:
       TZ: Europe/Paris
       ASAN_OPTIONS: detect_leaks=0
-      USE_ADDITIONAL_OPTIONS: "-E --telnetsrv --device.name vrtsim --vrtsim.role server --vrtsim.cirdb 1 --vrtsim.cirdb-path /cirdb --vrtsim.cirdb_model_id 1 --vrtsim.cirdb_ds_ns 30 --vrtsim.cirdb_speed_mps 1.5 --vrtsim.num_ues 1 --gNBs.[0].min_rxtxtime 3 --log_config.global_log_options level,nocolor,time"
+      USE_ADDITIONAL_OPTIONS: "-E --telnetsrv --device.name vrtsim --vrtsim.role server --vrtsim.timescale {server_timescale:g}{channel_options} --vrtsim.num_ues 1 --gNBs.[0].min_rxtxtime 3 --log_config.global_log_options level,nocolor,time"
     volumes:
-      - {trace_dir}:/cirdb:ro
-      - {shared_tmp}:/tmp
+      - {shared_tmp}:/tmp{trace_volume}
   {UE_SERVICE}:
     image: {UE_IMAGE}
     ipc: host
@@ -198,22 +214,39 @@ def evaluate_replay(
     gnb_log: str,
     attachment_checks: list[dict[str, Any]],
     ping_output: str,
+    require_cirdb: bool = True,
+    minimum_telemetry_seconds: float = MINIMUM_TELEMETRY_SECONDS,
+    trace_snapshots: int = TRACE_SNAPSHOTS,
 ) -> dict[str, Any]:
     log_result = parse_replay_logs(ue_log, gnb_log)
-    cirdb = parse_cirdb_debug(gnb_log)
-    if len(cirdb) < 2:
+    cirdb = parse_cirdb_debug(gnb_log) if require_cirdb else []
+    if require_cirdb and len(cirdb) < 2:
         raise ReplayError("fewer than two CIRDB debug rows")
-    elapsed = cirdb[-1]["elapsed_second"] - cirdb[0]["elapsed_second"]
-    step_span = cirdb[-1]["expected_cirdb_step"] - cirdb[0]["expected_cirdb_step"]
-    skipped_delta = (
-        cirdb[-1]["skipped_cirdb_snapshots"]
-        - cirdb[0]["skipped_cirdb_snapshots"]
-    )
-    skipped_fraction = skipped_delta / step_span if step_span > 0 else math.inf
-    cycle_coverage = min(1.0, step_span / TRACE_SNAPSHOTS)
-    maximum_gap = max(
-        row["maximum_consecutive_skipped_cirdb_snapshots"] for row in cirdb
-    )
+    if require_cirdb:
+        elapsed = cirdb[-1]["elapsed_second"] - cirdb[0]["elapsed_second"]
+        step_span = (
+            cirdb[-1]["expected_cirdb_step"] - cirdb[0]["expected_cirdb_step"]
+        )
+        skipped_delta = (
+            cirdb[-1]["skipped_cirdb_snapshots"]
+            - cirdb[0]["skipped_cirdb_snapshots"]
+        )
+        skipped_fraction = skipped_delta / step_span if step_span > 0 else math.inf
+        cycle_coverage = min(1.0, step_span / trace_snapshots)
+        maximum_gap = max(
+            row["maximum_consecutive_skipped_cirdb_snapshots"] for row in cirdb
+        )
+    else:
+        elapsed = (
+            attachment_checks[-1]["epoch"] - attachment_checks[0]["epoch"]
+            if len(attachment_checks) >= 2
+            else 0.0
+        )
+        step_span = None
+        skipped_delta = None
+        skipped_fraction = None
+        cycle_coverage = None
+        maximum_gap = None
     radio_debug_rows = ue_log.count("UE_RADIO_DEBUG_V1")
     ping = parse_ping_summary(ping_output)
     attachment_fraction = (
@@ -224,15 +257,25 @@ def evaluate_replay(
     gates = {
         "log_markers": bool(log_result["log_gate_pass"]),
         "attachment": attachment_fraction == 1.0,
-        "usable_duration": elapsed >= MINIMUM_TELEMETRY_SECONDS,
-        "ue_radio_debug_rows": radio_debug_rows >= int(MINIMUM_TELEMETRY_SECONDS),
-        "cirdb_debug_rows": len(cirdb) >= int(MINIMUM_TELEMETRY_SECONDS),
-        "trace_cycle_coverage": cycle_coverage >= 0.99,
-        "skipped_snapshot_fraction": skipped_fraction <= MAX_SKIPPED_FRACTION,
-        "maximum_consecutive_skipped": maximum_gap <= MAX_CONSECUTIVE_SKIPPED,
-        "tap_energy_positive": all(row["current_tap_energy_linear"] > 0 for row in cirdb),
+        "usable_duration": elapsed >= minimum_telemetry_seconds,
+        "ue_radio_debug_rows": radio_debug_rows >= int(minimum_telemetry_seconds),
         "ping_loss": ping["packet_loss_fraction"] <= MAX_PING_LOSS_FRACTION,
     }
+    if require_cirdb:
+        gates.update(
+            {
+                "cirdb_debug_rows": len(cirdb) >= int(minimum_telemetry_seconds),
+                "trace_cycle_coverage": cycle_coverage is not None
+                and cycle_coverage >= 0.99,
+                "skipped_snapshot_fraction": skipped_fraction is not None
+                and skipped_fraction <= MAX_SKIPPED_FRACTION,
+                "maximum_consecutive_skipped": maximum_gap is not None
+                and maximum_gap <= MAX_CONSECUTIVE_SKIPPED,
+                "tap_energy_positive": all(
+                    row["current_tap_energy_linear"] > 0 for row in cirdb
+                ),
+            }
+        )
     gates = {name: bool(value) for name, value in gates.items()}
     return {
         "log_parser": log_result,
@@ -268,6 +311,9 @@ def run_one_replay(
     shared_tmp: Path,
     output: Path,
     attach_timeout_seconds: float,
+    observation_seconds: float = OBSERVATION_SECONDS,
+    minimum_telemetry_seconds: float = MINIMUM_TELEMETRY_SECONDS,
+    require_cirdb: bool = True,
 ) -> dict[str, Any]:
     replay_id = f"vrtsim-{replay_number}"
     ping: subprocess.Popen[str] | None = None
@@ -309,14 +355,14 @@ def run_one_replay(
                 "-i",
                 "1",
                 "-w",
-                str(int(OBSERVATION_SECONDS)),
+                str(int(observation_seconds)),
                 DN_IP,
             ),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
-        deadline = time.monotonic() + OBSERVATION_SECONDS
+        deadline = time.monotonic() + observation_seconds
         while time.monotonic() < deadline:
             attached = is_attached()
             attachment_checks.append({"epoch": time.time(), "attached": attached})
@@ -352,6 +398,8 @@ def run_one_replay(
             gnb_log=gnb_log,
             attachment_checks=attachment_checks,
             ping_output=ping_output,
+            require_cirdb=require_cirdb,
+            minimum_telemetry_seconds=minimum_telemetry_seconds,
         )
         write_json(output / f"{replay_id}-evaluation.json", evaluation)
         if not evaluation["replay_pass"]:
@@ -384,6 +432,16 @@ def make_output(root: Path) -> Path:
 def execute(args: argparse.Namespace) -> int:
     if hasattr(sys, "geteuid") and sys.geteuid() != 0:
         raise ReplayError("run this command as root")
+    if args.server_timescale <= 0:
+        raise ReplayError("server timescale must be positive")
+    if args.repetitions <= 0:
+        raise ReplayError("repetitions must be positive")
+    if args.observation_seconds <= 0:
+        raise ReplayError("observation seconds must be positive")
+    if not 0 < args.minimum_telemetry_seconds <= args.observation_seconds:
+        raise ReplayError(
+            "minimum telemetry seconds must be positive and no greater than observation seconds"
+        )
     compose_file = Path(args.compose_file).resolve()
     trace_dir = Path(args.trace_dir).resolve()
     override_file = Path(args.override_file).resolve()
@@ -392,8 +450,9 @@ def execute(args: argparse.Namespace) -> int:
     print(f"OUTPUT_DIR={output}", flush=True)
 
     require_hash(compose_file, COMPOSE_SHA256)
-    require_hash(trace_dir / "cir_db.bin", TRACE_BINARY_SHA256)
-    require_hash(trace_dir / "vrtsim.yaml", TRACE_SIDECAR_SHA256)
+    if args.channel_mode == "cirdb":
+        require_hash(trace_dir / "cir_db.bin", TRACE_BINARY_SHA256)
+        require_hash(trace_dir / "vrtsim.yaml", TRACE_SIDECAR_SHA256)
     for reference, expected_id in (
         (UE_IMAGE, args.expected_ue_image_id),
         (GNB_IMAGE, args.expected_gnb_image_id),
@@ -410,7 +469,12 @@ def execute(args: argparse.Namespace) -> int:
     original_gnb_restarts = int(docker_inspect("{{.RestartCount}}", GNB_CONTAINER))
     shared_tmp.mkdir(parents=True, exist_ok=True)
     override_file.parent.mkdir(parents=True, exist_ok=True)
-    override = render_override(trace_dir, shared_tmp)
+    override = render_override(
+        trace_dir,
+        shared_tmp,
+        channel_mode=args.channel_mode,
+        server_timescale=args.server_timescale,
+    )
     if override_file.exists() and override_file.read_text() != override:
         raise ReplayError(f"refusing to overwrite a different override: {override_file}")
     override_file.write_text(override)
@@ -421,7 +485,7 @@ def execute(args: argparse.Namespace) -> int:
     rollback: dict[str, Any] = {"attempted": False, "passed": False}
     try:
         mutated = True
-        for replay_number in range(1, REPETITIONS + 1):
+        for replay_number in range(1, args.repetitions + 1):
             evaluations.append(
                 run_one_replay(
                     replay_number,
@@ -430,6 +494,9 @@ def execute(args: argparse.Namespace) -> int:
                     shared_tmp,
                     output,
                     args.attach_timeout_seconds,
+                    args.observation_seconds,
+                    args.minimum_telemetry_seconds,
+                    args.channel_mode == "cirdb",
                 )
             )
     except (KeyboardInterrupt, OSError, ReplayError, subprocess.SubprocessError) as exc:
@@ -474,14 +541,23 @@ def execute(args: argparse.Namespace) -> int:
 
     state = {
         "schema_version": 1,
-        "execution_completed": error is None and len(evaluations) == REPETITIONS,
+        "execution_completed": error is None and len(evaluations) == args.repetitions,
         "error": error,
-        "trace_binary_sha256": sha256(trace_dir / "cir_db.bin"),
-        "trace_sidecar_sha256": sha256(trace_dir / "vrtsim.yaml"),
+        "trace_binary_sha256": sha256(trace_dir / "cir_db.bin")
+        if args.channel_mode == "cirdb"
+        else None,
+        "trace_sidecar_sha256": sha256(trace_dir / "vrtsim.yaml")
+        if args.channel_mode == "cirdb"
+        else None,
         "ue_image": UE_IMAGE,
         "ue_image_id": args.expected_ue_image_id,
         "gnb_image": GNB_IMAGE,
         "gnb_image_id": args.expected_gnb_image_id,
+        "channel_mode": args.channel_mode,
+        "server_timescale": args.server_timescale,
+        "repetitions_required": args.repetitions,
+        "observation_seconds": args.observation_seconds,
+        "minimum_telemetry_seconds": args.minimum_telemetry_seconds,
         "replays": evaluations,
         "rollback": rollback,
     }
@@ -500,6 +576,17 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--shared-tmp", default="/local/phase3c/vrtsim-tmp")
     root.add_argument("--output-root", default="/local/logs/phase3c4")
     root.add_argument("--attach-timeout-seconds", type=float, default=180.0)
+    root.add_argument(
+        "--channel-mode", choices=("cirdb", "passthrough"), default="cirdb"
+    )
+    root.add_argument("--server-timescale", type=float, default=1.0)
+    root.add_argument("--repetitions", type=int, default=REPETITIONS)
+    root.add_argument("--observation-seconds", type=float, default=OBSERVATION_SECONDS)
+    root.add_argument(
+        "--minimum-telemetry-seconds",
+        type=float,
+        default=MINIMUM_TELEMETRY_SECONDS,
+    )
     root.add_argument("--expected-ue-image-id", required=True)
     root.add_argument("--expected-gnb-image-id", required=True)
     return root
