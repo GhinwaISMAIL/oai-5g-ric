@@ -1,0 +1,2 @@
+[CONFIG] PUSCH Target 200 RSSI thresh 0 Failure 10, PUCCH Target 200 RSSI thresh 0 Failure 10
+[NR_MAC] UE RNTI 1234: ulsch_DTX 2, BLER 0.01000

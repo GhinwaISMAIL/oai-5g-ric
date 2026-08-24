@@ -1,0 +1,6 @@
+[PHY] Initial sync: pbch decoded sucessfully, ssb index 0
+[NR_MAC] [UE 0][585.4][RAPROC] 4-Step RA procedure succeeded. CBRA: Contention Resolution is successful.
+[NR_RRC] State = NR_RRC_CONNECTED
+[NAS] Received Registration Accept with result 3GPP
+[PHY] Frame 4, slot 0, SSB Index 0. Error decoding PBCH!
+[RLC] UE 1234: RLF detected
