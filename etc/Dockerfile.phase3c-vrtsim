@@ -1,0 +1,52 @@
+ARG BASE_UE_IMAGE=ghinwa555/oai-nr-ue-chan:v2
+ARG BASE_GNB_IMAGE=ghinwa555/oai-gnb-e2-chan:v2
+
+FROM ran-base:latest AS phase3c-vrtsim-build
+
+WORKDIR /oai-ran
+COPY . .
+
+RUN --mount=type=cache,target=/root/.cache/ccache/ \
+    --mount=type=cache,target=/root/.cache/cpm/ \
+    /bin/sh oaienv && \
+    cd cmake_targets && \
+    mkdir -p log && \
+    ./build_oai -c --ninja \
+      --gNB --nrUE \
+      --build-lib "telnetsrv nrscope" \
+      -w USRP -t Ethernet -w BLADERF \
+      --cmake-opt -DOAI_VRTSIM_TAPS_CLIENT=ON \
+      -w ZMQ \
+      --noavx512 \
+      --build-tool-opt -k10 \
+      --cmake-opt -DT_RECORD_DB=ON \
+      --cmake-opt -DCMAKE_C_FLAGS="-Werror" \
+      --cmake-opt -DCMAKE_CXX_FLAGS="-Werror"
+
+FROM ${BASE_UE_IMAGE} AS phase3c-vrtsim-ue
+
+COPY --from=phase3c-vrtsim-build \
+    /oai-ran/cmake_targets/ran_build/build/nr-uesoftmodem \
+    /opt/oai-nr-ue/bin/nr-uesoftmodem
+COPY --from=phase3c-vrtsim-build \
+    /oai-ran/cmake_targets/ran_build/build/libvrtsim.so \
+    /usr/local/lib/libvrtsim.so
+
+RUN test -x /opt/oai-nr-ue/bin/nr-uesoftmodem && \
+    test -f /usr/local/lib/libvrtsim.so && \
+    ! ldd /opt/oai-nr-ue/bin/nr-uesoftmodem | grep -q "not found" && \
+    ! ldd /usr/local/lib/libvrtsim.so | grep -q "not found"
+
+FROM ${BASE_GNB_IMAGE} AS phase3c-vrtsim-gnb
+
+COPY --from=phase3c-vrtsim-build \
+    /oai-ran/cmake_targets/ran_build/build/nr-softmodem \
+    /opt/oai-gnb/bin/nr-softmodem
+COPY --from=phase3c-vrtsim-build \
+    /oai-ran/cmake_targets/ran_build/build/libvrtsim.so \
+    /usr/local/lib/libvrtsim.so
+
+RUN test -x /opt/oai-gnb/bin/nr-softmodem && \
+    test -f /usr/local/lib/libvrtsim.so && \
+    ! ldd /opt/oai-gnb/bin/nr-softmodem | grep -q "not found" && \
+    ! ldd /usr/local/lib/libvrtsim.so | grep -q "not found"
