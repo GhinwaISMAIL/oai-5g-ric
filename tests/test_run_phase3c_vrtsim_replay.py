@@ -120,3 +120,45 @@ def test_replay_evaluator_rejects_snapshot_gap() -> None:
 
     assert result["replay_pass"] is False
     assert result["gate_results"]["maximum_consecutive_skipped"] is False
+
+
+def test_attachment_failure_captures_logs_before_rollback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(MODULE, "compose", lambda *args: "")
+    monkeypatch.setattr(MODULE, "wait_gnb_healthy", lambda timeout: None)
+
+    def fail_attachment(timeout: float) -> None:
+        raise MODULE.ReplayError(f"attachment failed after {timeout}")
+
+    monkeypatch.setattr(MODULE, "wait_attached", fail_attachment)
+
+    def fake_run_command(*args: str, check: bool = True) -> str:
+        if args[-1] == MODULE.UE_CONTAINER:
+            return "UE startup failure evidence"
+        if args[-1] == MODULE.GNB_CONTAINER:
+            return "gNB timing failure evidence"
+        return ""
+
+    monkeypatch.setattr(MODULE, "run_command", fake_run_command)
+    output = tmp_path / "output"
+    output.mkdir()
+
+    with pytest.raises(MODULE.ReplayError, match="attachment failed"):
+        MODULE.run_one_replay(
+            1,
+            tmp_path / "compose.yaml",
+            tmp_path / "override.yaml",
+            tmp_path / "shared",
+            output,
+            180.0,
+        )
+
+    assert (output / "vrtsim-1-ue.log").read_text() == (
+        "UE startup failure evidence\n"
+    )
+    assert (output / "vrtsim-1-gnb.log").read_text() == (
+        "gNB timing failure evidence\n"
+    )
+    assert (output / "vrtsim-1-ping.log").read_text() == "\n"
+    assert (output / "vrtsim-1-attachment.json").is_file()

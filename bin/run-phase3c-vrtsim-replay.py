@@ -270,51 +270,53 @@ def run_one_replay(
     attach_timeout_seconds: float,
 ) -> dict[str, Any]:
     replay_id = f"vrtsim-{replay_number}"
-    (shared_tmp / "vrtsim_connection").unlink(missing_ok=True)
-    compose(
-        compose_file,
-        override_file,
-        "up",
-        "-d",
-        "--no-deps",
-        "--force-recreate",
-        GNB_SERVICE,
-        UE_SERVICE,
-    )
-    wait_gnb_healthy(attach_timeout_seconds)
-    wait_attached(attach_timeout_seconds)
-    run_command(
-        "docker",
-        "exec",
-        UE_CONTAINER,
-        "ip",
-        "route",
-        "replace",
-        DN_SUBNET,
-        "dev",
-        "oaitun_ue1",
-    )
-    ping = subprocess.Popen(
-        (
+    ping: subprocess.Popen[str] | None = None
+    ping_output = ""
+    attachment_checks: list[dict[str, Any]] = []
+    try:
+        (shared_tmp / "vrtsim_connection").unlink(missing_ok=True)
+        compose(
+            compose_file,
+            override_file,
+            "up",
+            "-d",
+            "--no-deps",
+            "--force-recreate",
+            GNB_SERVICE,
+            UE_SERVICE,
+        )
+        wait_gnb_healthy(attach_timeout_seconds)
+        wait_attached(attach_timeout_seconds)
+        run_command(
             "docker",
             "exec",
             UE_CONTAINER,
-            "ping",
-            "-I",
+            "ip",
+            "route",
+            "replace",
+            DN_SUBNET,
+            "dev",
             "oaitun_ue1",
-            "-i",
-            "1",
-            "-w",
-            str(int(OBSERVATION_SECONDS)),
-            DN_IP,
-        ),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    attachment_checks: list[dict[str, Any]] = []
-    deadline = time.monotonic() + OBSERVATION_SECONDS
-    try:
+        )
+        ping = subprocess.Popen(
+            (
+                "docker",
+                "exec",
+                UE_CONTAINER,
+                "ping",
+                "-I",
+                "oaitun_ue1",
+                "-i",
+                "1",
+                "-w",
+                str(int(OBSERVATION_SECONDS)),
+                DN_IP,
+            ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        deadline = time.monotonic() + OBSERVATION_SECONDS
         while time.monotonic() < deadline:
             attached = is_attached()
             attachment_checks.append({"epoch": time.time(), "attached": attached})
@@ -338,32 +340,38 @@ def run_one_replay(
             ):
                 raise ReplayError("CIRDB consecutive-snapshot gap exceeded the limit")
             time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
-    except BaseException:
-        if ping.poll() is None:
+        try:
+            ping_output, _ = ping.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
             ping.terminate()
-        ping.communicate(timeout=10)
-        raise
-    try:
-        ping_output, _ = ping.communicate(timeout=10)
-    except subprocess.TimeoutExpired:
-        ping.terminate()
-        ping_output, _ = ping.communicate(timeout=10)
-    ue_log = run_command("docker", "logs", UE_CONTAINER)
-    gnb_log = run_command("docker", "logs", GNB_CONTAINER)
-    (output / f"{replay_id}-ue.log").write_text(ue_log + "\n")
-    (output / f"{replay_id}-gnb.log").write_text(gnb_log + "\n")
-    (output / f"{replay_id}-ping.log").write_text(ping_output + "\n")
-    write_json(output / f"{replay_id}-attachment.json", attachment_checks)
-    evaluation = evaluate_replay(
-        ue_log=ue_log,
-        gnb_log=gnb_log,
-        attachment_checks=attachment_checks,
-        ping_output=ping_output,
-    )
-    write_json(output / f"{replay_id}-evaluation.json", evaluation)
-    if not evaluation["replay_pass"]:
-        raise ReplayError(f"{replay_id} failed: {evaluation['gate_results']}")
-    return evaluation
+            ping_output, _ = ping.communicate(timeout=10)
+        ue_log = run_command("docker", "logs", UE_CONTAINER)
+        gnb_log = run_command("docker", "logs", GNB_CONTAINER)
+        evaluation = evaluate_replay(
+            ue_log=ue_log,
+            gnb_log=gnb_log,
+            attachment_checks=attachment_checks,
+            ping_output=ping_output,
+        )
+        write_json(output / f"{replay_id}-evaluation.json", evaluation)
+        if not evaluation["replay_pass"]:
+            raise ReplayError(f"{replay_id} failed: {evaluation['gate_results']}")
+        return evaluation
+    finally:
+        if ping is not None and not ping_output:
+            if ping.poll() is None:
+                ping.terminate()
+            try:
+                ping_output, _ = ping.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                ping.kill()
+                ping_output, _ = ping.communicate(timeout=10)
+        ue_log = run_command("docker", "logs", UE_CONTAINER, check=False)
+        gnb_log = run_command("docker", "logs", GNB_CONTAINER, check=False)
+        (output / f"{replay_id}-ue.log").write_text(ue_log + "\n")
+        (output / f"{replay_id}-gnb.log").write_text(gnb_log + "\n")
+        (output / f"{replay_id}-ping.log").write_text(ping_output + "\n")
+        write_json(output / f"{replay_id}-attachment.json", attachment_checks)
 
 
 def make_output(root: Path) -> Path:
