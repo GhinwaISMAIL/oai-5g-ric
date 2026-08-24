@@ -56,3 +56,17 @@ def test_missing_required_marker_fails_closed() -> None:
 
     assert result["log_gate_pass"] is False
     assert result["gate_results"]["ue_required_registration_accept"] is False
+
+
+def test_unhandled_gnb_rlf_warning_is_classified_but_still_fails() -> None:
+    gnb = _text("phase3c_gnb_healthy.log") + (
+        "\n[RLC] max RETX reached on SRB 1"
+        "\n[RLC] UE 1234: RLF detected, but no callable RLF handler registered\n"
+    )
+    result = MODULE.parse_replay_logs(_text("phase3c_ue_healthy.log"), gnb)
+
+    assert result["schema_version"] == 2
+    assert result["failure_marker_counts"]["gnb"]["rlc_max_retx"] == 1
+    assert result["failure_marker_counts"]["gnb"]["unhandled_rlf_indication"] == 1
+    assert result["failure_marker_counts"]["gnb"]["radio_link_failure"] == 0
+    assert result["log_gate_pass"] is False

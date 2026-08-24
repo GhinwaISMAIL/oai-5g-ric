@@ -29,7 +29,14 @@ UE_FAILURES = {
 GNB_FAILURES = {
     "pusch_ul_failure": re.compile(r"Detected UL Failure on PUSCH after"),
     "random_access_failure": re.compile(r"RA (?:Procedure|procedure) failed"),
-    "radio_link_failure": re.compile(r"RLF detected|radio link failure", re.IGNORECASE),
+    "rlc_max_retx": re.compile(r"max RETX reached", re.IGNORECASE),
+    "unhandled_rlf_indication": re.compile(
+        r"RLF detected, but no callable RLF handler registered", re.IGNORECASE
+    ),
+    "radio_link_failure": re.compile(
+        r"RLF detected(?!,\s*but no callable RLF handler registered)|radio link failure",
+        re.IGNORECASE,
+    ),
 }
 ULSCH_DTX_COUNTER = re.compile(r"ulsch_DTX\s+(\d+)")
 
@@ -56,7 +63,7 @@ def parse_replay_logs(ue_text: str, gnb_text: str) -> dict[str, Any]:
     }
     gates = {name: bool(value) for name, value in gates.items()}
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "required_marker_counts": {"ue": ue_required, "gnb": gnb_required},
         "failure_marker_counts": {"ue": ue_failures, "gnb": gnb_failures},
         "reported_ulsch_dtx_counter_max": max(dtx_values) if dtx_values else None,
@@ -64,8 +71,10 @@ def parse_replay_logs(ue_text: str, gnb_text: str) -> dict[str, Any]:
         "gate_results": gates,
         "log_gate_pass": all(gates.values()),
         "interpretation": (
-            "The critical PUSCH failure marker is gated at zero. Individual DTX "
-            "counter values are reported but are not treated as failures unless the "
+            "Critical PUSCH and actual RLF markers are gated at zero. The gNB's "
+            "unhandled RLF indication is classified separately from an actual handled "
+            "RLF, but it and its RLC max-retransmission cause remain zero-tolerance "
+            "safety failures. Individual DTX counters remain diagnostic unless the "
             "configured consecutive-DTX threshold triggers the critical marker."
         ),
     }

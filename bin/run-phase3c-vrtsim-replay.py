@@ -133,6 +133,7 @@ def render_override(
     *,
     channel_mode: str = "cirdb",
     server_timescale: float = 1.0,
+    gnb_min_rxtxtime: int = 3,
 ) -> str:
     if channel_mode not in {"cirdb", "passthrough"}:
         raise ReplayError(f"unsupported channel mode: {channel_mode}")
@@ -152,7 +153,7 @@ def render_override(
     environment:
       TZ: Europe/Paris
       ASAN_OPTIONS: detect_leaks=0
-      USE_ADDITIONAL_OPTIONS: "-E --telnetsrv --device.name vrtsim --vrtsim.role server --vrtsim.timescale {server_timescale:g}{channel_options} --vrtsim.num_ues 1 --gNBs.[0].min_rxtxtime 3 --log_config.global_log_options level,nocolor,time"
+      USE_ADDITIONAL_OPTIONS: "-E --telnetsrv --device.name vrtsim --vrtsim.role server --vrtsim.timescale {server_timescale:g}{channel_options} --vrtsim.num_ues 1 --gNBs.[0].min_rxtxtime {gnb_min_rxtxtime} --log_config.global_log_options level,nocolor,time"
     volumes:
       - {shared_tmp}:/tmp{trace_volume}
   {UE_SERVICE}:
@@ -436,6 +437,8 @@ def execute(args: argparse.Namespace) -> int:
         raise ReplayError("server timescale must be positive")
     if args.repetitions <= 0:
         raise ReplayError("repetitions must be positive")
+    if args.gnb_min_rxtxtime <= 0:
+        raise ReplayError("gNB min_rxtxtime must be positive")
     if args.observation_seconds <= 0:
         raise ReplayError("observation seconds must be positive")
     if not 0 < args.minimum_telemetry_seconds <= args.observation_seconds:
@@ -474,6 +477,7 @@ def execute(args: argparse.Namespace) -> int:
         shared_tmp,
         channel_mode=args.channel_mode,
         server_timescale=args.server_timescale,
+        gnb_min_rxtxtime=args.gnb_min_rxtxtime,
     )
     if override_file.exists() and override_file.read_text() != override:
         raise ReplayError(f"refusing to overwrite a different override: {override_file}")
@@ -555,6 +559,7 @@ def execute(args: argparse.Namespace) -> int:
         "gnb_image_id": args.expected_gnb_image_id,
         "channel_mode": args.channel_mode,
         "server_timescale": args.server_timescale,
+        "gnb_min_rxtxtime": args.gnb_min_rxtxtime,
         "repetitions_required": args.repetitions,
         "observation_seconds": args.observation_seconds,
         "minimum_telemetry_seconds": args.minimum_telemetry_seconds,
@@ -580,6 +585,7 @@ def parser() -> argparse.ArgumentParser:
         "--channel-mode", choices=("cirdb", "passthrough"), default="cirdb"
     )
     root.add_argument("--server-timescale", type=float, default=1.0)
+    root.add_argument("--gnb-min-rxtxtime", type=int, default=3)
     root.add_argument("--repetitions", type=int, default=REPETITIONS)
     root.add_argument("--observation-seconds", type=float, default=OBSERVATION_SECONDS)
     root.add_argument(

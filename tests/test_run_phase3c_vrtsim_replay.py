@@ -55,11 +55,13 @@ def test_passthrough_override_changes_only_channel_processing(tmp_path: Path) ->
         tmp_path / "shared",
         channel_mode="passthrough",
         server_timescale=1.0,
+        gnb_min_rxtxtime=6,
     )
 
     assert "--device.name vrtsim" in override
     assert override.count("ipc: host") == 2
     assert "--vrtsim.timescale 1" in override
+    assert "--gNBs.[0].min_rxtxtime 6" in override
     assert "--vrtsim.cirdb" not in override
     assert "/cirdb" not in override
 
