@@ -8,6 +8,7 @@ import sys
 
 
 MARKER = "UE_RADIO_V1"
+DEBUG_MARKER = "UE_RADIO_DEBUG_V1"
 INCLUDE_ANCHOR = '#include "PHY/NR_UE_ESTIMATION/nr_estimation.h"\n'
 HELPER_ANCHOR = "// Send SSB RSRP measurement to MAC\n"
 CALL_ANCHOR = "  LOG_D(PHY,\n        \"[UE %d] ssb %d SS-RSRP:"
@@ -20,10 +21,13 @@ typedef struct {
   double rsrp_sum;
   double rsrq_sum;
   double sinr_sum;
+  double rsrp_digital_power_sum;
+  double rsrp_db_per_re_sum;
   unsigned int samples;
   int module_id;
   uint16_t cell_id;
   int ssb_index;
+  int ss_rsrp_dbm_integer;
 } ue_radio_second_t;
 
 static ue_radio_second_t ue_radio_second = {.utc_second = -1};
@@ -55,9 +59,11 @@ static void record_ue_radio_second(const PHY_VARS_NR_UE *ue,
                                    int ssb_index,
                                    double rsrp_dbm,
                                    double rsrq_db,
-                                   double sinr_db)
+                                   double sinr_db,
+                                   uint32_t rsrp_digital_power,
+                                   double rsrp_db_per_re)
 {
-  if (!isfinite(rsrp_dbm) || !isfinite(rsrq_db) || !isfinite(sinr_db))
+  if (!isfinite(rsrp_dbm) || !isfinite(rsrq_db) || !isfinite(sinr_db) || !isfinite(rsrp_db_per_re))
     return;
 
   struct timespec now = {0};
@@ -80,6 +86,20 @@ static void record_ue_radio_second(const PHY_VARS_NR_UE *ue,
           ue_radio_second.rsrp_sum / ue_radio_second.samples,
           ue_radio_second.rsrq_sum / ue_radio_second.samples,
           ue_radio_second.sinr_sum / ue_radio_second.samples);
+    LOG_I(PHY,
+          "UE_RADIO_DEBUG_V1 utc_second=%lld emitted_epoch_us=%lld ue=%d cell=%u ssb=%d samples=%u "
+          "rsrp_digital_power_linear=%.9f rsrp_db_per_re_unquantized=%.6f "
+          "ss_rsrp_dbm_integer=%d ss_sinr_db=%.6f\n",
+          (long long)ue_radio_second.utc_second,
+          (long long)emitted_epoch_us,
+          ue_radio_second.module_id,
+          ue_radio_second.cell_id,
+          ue_radio_second.ssb_index,
+          ue_radio_second.samples,
+          ue_radio_second.rsrp_digital_power_sum / ue_radio_second.samples,
+          ue_radio_second.rsrp_db_per_re_sum / ue_radio_second.samples,
+          ue_radio_second.ss_rsrp_dbm_integer,
+          ue_radio_second.sinr_sum / ue_radio_second.samples);
   }
 
   if (utc_second != ue_radio_second.utc_second) {
@@ -94,6 +114,9 @@ static void record_ue_radio_second(const PHY_VARS_NR_UE *ue,
   ue_radio_second.rsrp_sum += rsrp_dbm;
   ue_radio_second.rsrq_sum += rsrq_db;
   ue_radio_second.sinr_sum += sinr_db;
+  ue_radio_second.rsrp_digital_power_sum += rsrp_digital_power;
+  ue_radio_second.rsrp_db_per_re_sum += rsrp_db_per_re;
+  ue_radio_second.ss_rsrp_dbm_integer = (int)rsrp_dbm;
   ue_radio_second.samples++;
 }
 
@@ -105,7 +128,9 @@ CALL = '''  if (ssb_index == fp->ssb_index) {
                            ssb_index,
                            ue->measurements.ssb_rsrp_dBm[ssb_index],
                            ss_rsrq_dB,
-                           ue->measurements.ssb_sinr_dB[ssb_index]);
+                           ue->measurements.ssb_sinr_dB[ssb_index],
+                           rsrp_avg,
+                           rsrp_db_per_re);
   }
 
 '''
@@ -128,6 +153,10 @@ def patch_file(path: Path) -> bool:
             "record_ue_radio_second",
             "CLOCK_REALTIME",
             "ss_rsrq_db=",
+            DEBUG_MARKER,
+            "rsrp_digital_power_linear=",
+            "rsrp_db_per_re_unquantized=",
+            "ss_rsrp_dbm_integer=",
         )
         missing = [value for value in required if value not in text]
         if missing:

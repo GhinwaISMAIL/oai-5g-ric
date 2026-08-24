@@ -28,6 +28,7 @@ ACTUAL_OAI_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
 python3 "$RUNNER_DIR/patch-oai-ue-radio-measurements.py" "$MEASUREMENT_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-rfsim-rng-init.py" "$RFSIMULATOR_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-rfsim-rsrp-calibration.py" "$RFSIMULATOR_SOURCE"
+python3 "$RUNNER_DIR/patch-oai-rfsim-debug-telemetry.py" "$RFSIMULATOR_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-tdl-model.py" "$RANDOM_CHANNEL_SOURCE"
 git -C "$SOURCE_DIR" diff --check -- \
     "$MEASUREMENT_SOURCE" \

@@ -56,12 +56,17 @@ class PatchOaiUeRadioMeasurementsTest(unittest.TestCase):
 
             self.assertEqual(path.read_text(), result)
             self.assertEqual(result.count("UE_RADIO_V1"), 1)
+            self.assertEqual(result.count("UE_RADIO_DEBUG_V1"), 1)
             self.assertIn("#include <stdint.h>", result)
             self.assertIn("#include <time.h>", result)
             self.assertIn("UE_RADIO_SSB_RBS * (double)rsrp_avg", result)
             self.assertIn("utc_second != ue_radio_second.utc_second", result)
             self.assertIn("ssb_index == fp->ssb_index", result)
             self.assertIn("ss_rsrq_db=%.3f", result)
+            self.assertIn("rsrp_digital_power_linear=%.9f", result)
+            self.assertIn("rsrp_db_per_re_unquantized=%.6f", result)
+            self.assertIn("ss_rsrp_dbm_integer=%d", result)
+            self.assertIn("rsrp_avg,\n                           rsrp_db_per_re", result)
 
     def test_ss_rsrq_reference_value_for_uniform_power(self) -> None:
         resource_blocks = 20
