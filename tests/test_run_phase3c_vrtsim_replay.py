@@ -159,6 +159,59 @@ def test_passthrough_evaluator_does_not_require_cirdb_rows() -> None:
     assert "trace_cycle_coverage" not in result["gate_results"]
 
 
+def test_passthrough_evaluator_records_startup_warning_but_gates_observation() -> None:
+    ue, _ = _healthy_logs(31)
+    startup_gnb = (
+        "PUSCH Target 200 RSSI thresh 0 Failure 10"
+        "\nmax RETX reached on SRB 1"
+        "\nUE 1234: RLF detected, but no callable RLF handler registered"
+    )
+    checks = [{"attached": True, "epoch": float(index)} for index in range(31)]
+    result = MODULE.evaluate_replay(
+        ue_log=ue,
+        gnb_log=startup_gnb,
+        startup_ue_log=ue,
+        startup_gnb_log=startup_gnb,
+        observation_ue_log="\n".join(
+            "UE_RADIO_DEBUG_V1 value=1" for _ in range(31)
+        ),
+        observation_gnb_log="clean observation window",
+        attachment_checks=checks,
+        ping_output="30 packets transmitted, 30 received, 0% packet loss, time 30000ms",
+        require_cirdb=False,
+        minimum_telemetry_seconds=20.0,
+    )
+
+    assert result["replay_pass"] is True
+    assert result["log_parser"]["failure_window"] == "provided_observation_suffix"
+    assert result["log_parser"]["log_gate_pass"] is True
+    assert result["startup_log_diagnostics"]["log_gate_pass"] is False
+
+
+def test_legacy_evaluator_labels_full_log_failure_window() -> None:
+    ue, _ = _healthy_logs(31)
+    result = MODULE.evaluate_replay(
+        ue_log=ue,
+        gnb_log="PUSCH Target 200 RSSI thresh 0 Failure 10",
+        attachment_checks=[
+            {"attached": True, "epoch": float(index)} for index in range(31)
+        ],
+        ping_output="30 packets transmitted, 30 received, 0% packet loss, time 30000ms",
+        require_cirdb=False,
+        minimum_telemetry_seconds=20.0,
+    )
+
+    assert result["log_parser"]["failure_window"] == "full_log"
+
+
+def test_log_suffix_fails_closed_if_stream_is_not_append_only() -> None:
+    assert MODULE._log_suffix("startup\nobservation", "startup\n", "UE") == (
+        "observation"
+    )
+    with pytest.raises(MODULE.ReplayError, match="not append-only"):
+        MODULE._log_suffix("rotated log", "startup log", "UE")
+
+
 def test_attachment_failure_captures_logs_before_rollback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

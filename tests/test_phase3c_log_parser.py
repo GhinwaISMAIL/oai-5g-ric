@@ -70,3 +70,20 @@ def test_unhandled_gnb_rlf_warning_is_classified_but_still_fails() -> None:
     assert result["failure_marker_counts"]["gnb"]["unhandled_rlf_indication"] == 1
     assert result["failure_marker_counts"]["gnb"]["radio_link_failure"] == 0
     assert result["log_gate_pass"] is False
+
+
+def test_observation_suffix_keeps_startup_diagnostics_out_of_safety_gate() -> None:
+    startup_gnb = _text("phase3c_gnb_healthy.log") + (
+        "\n[RLC] max RETX reached on SRB 1"
+        "\n[RLC] UE 1234: RLF detected, but no callable RLF handler registered\n"
+    )
+    result = MODULE.parse_replay_logs(
+        _text("phase3c_ue_healthy.log"),
+        startup_gnb,
+        ue_failure_text="UE_RADIO_DEBUG_V1 value=1\n",
+        gnb_failure_text="[NR_MAC] clean observation window\n",
+    )
+
+    assert result["failure_window"] == "provided_observation_suffix"
+    assert result["failure_marker_counts"]["gnb"]["rlc_max_retx"] == 0
+    assert result["log_gate_pass"] is True

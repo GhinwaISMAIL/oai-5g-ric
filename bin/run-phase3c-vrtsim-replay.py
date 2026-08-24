@@ -215,12 +215,34 @@ def evaluate_replay(
     gnb_log: str,
     attachment_checks: list[dict[str, Any]],
     ping_output: str,
+    startup_ue_log: str | None = None,
+    startup_gnb_log: str | None = None,
+    observation_ue_log: str | None = None,
+    observation_gnb_log: str | None = None,
     require_cirdb: bool = True,
     minimum_telemetry_seconds: float = MINIMUM_TELEMETRY_SECONDS,
     trace_snapshots: int = TRACE_SNAPSHOTS,
 ) -> dict[str, Any]:
-    log_result = parse_replay_logs(ue_log, gnb_log)
-    cirdb = parse_cirdb_debug(gnb_log) if require_cirdb else []
+    if (observation_ue_log is None) != (observation_gnb_log is None):
+        raise ReplayError("both observation log suffixes must be supplied together")
+    if (startup_ue_log is None) != (startup_gnb_log is None):
+        raise ReplayError("both startup log prefixes must be supplied together")
+    failure_ue_log = ue_log if observation_ue_log is None else observation_ue_log
+    failure_gnb_log = gnb_log if observation_gnb_log is None else observation_gnb_log
+    if observation_ue_log is None:
+        log_result = parse_replay_logs(ue_log, gnb_log)
+    else:
+        log_result = parse_replay_logs(
+            ue_log,
+            gnb_log,
+            ue_failure_text=observation_ue_log,
+            gnb_failure_text=observation_gnb_log,
+        )
+    startup_result = parse_replay_logs(
+        ue_log if startup_ue_log is None else startup_ue_log,
+        gnb_log if startup_gnb_log is None else startup_gnb_log,
+    )
+    cirdb = parse_cirdb_debug(failure_gnb_log) if require_cirdb else []
     if require_cirdb and len(cirdb) < 2:
         raise ReplayError("fewer than two CIRDB debug rows")
     if require_cirdb:
@@ -248,7 +270,7 @@ def evaluate_replay(
         skipped_fraction = None
         cycle_coverage = None
         maximum_gap = None
-    radio_debug_rows = ue_log.count("UE_RADIO_DEBUG_V1")
+    radio_debug_rows = failure_ue_log.count("UE_RADIO_DEBUG_V1")
     ping = parse_ping_summary(ping_output)
     attachment_fraction = (
         sum(bool(row["attached"]) for row in attachment_checks) / len(attachment_checks)
@@ -280,6 +302,7 @@ def evaluate_replay(
     gates = {name: bool(value) for name, value in gates.items()}
     return {
         "log_parser": log_result,
+        "startup_log_diagnostics": startup_result,
         "attachment_checks": len(attachment_checks),
         "attachment_fraction": attachment_fraction,
         "cirdb_debug_rows": len(cirdb),
@@ -305,6 +328,12 @@ def _critical_failure_seen(ue_log: str, gnb_log: str) -> bool:
     )
 
 
+def _log_suffix(current: str, prefix: str, label: str) -> str:
+    if not current.startswith(prefix):
+        raise ReplayError(f"{label} log stream was not append-only")
+    return current[len(prefix) :]
+
+
 def run_one_replay(
     replay_number: int,
     compose_file: Path,
@@ -315,6 +344,7 @@ def run_one_replay(
     observation_seconds: float = OBSERVATION_SECONDS,
     minimum_telemetry_seconds: float = MINIMUM_TELEMETRY_SECONDS,
     require_cirdb: bool = True,
+    stabilization_seconds: float = 0.0,
 ) -> dict[str, Any]:
     replay_id = f"vrtsim-{replay_number}"
     ping: subprocess.Popen[str] | None = None
@@ -345,6 +375,23 @@ def run_one_replay(
             "dev",
             "oaitun_ue1",
         )
+        stabilization_deadline = time.monotonic() + stabilization_seconds
+        while time.monotonic() < stabilization_deadline:
+            if not is_attached():
+                raise ReplayError(f"attachment lost during {replay_id} stabilization")
+            if docker_inspect("{{.State.Status}}", GNB_CONTAINER) != "running":
+                raise ReplayError("gNB container stopped during stabilization")
+            if docker_inspect("{{.State.Status}}", UE_CONTAINER) != "running":
+                raise ReplayError("UE container stopped during stabilization")
+            if int(docker_inspect("{{.RestartCount}}", GNB_CONTAINER)) != 0:
+                raise ReplayError("gNB container restarted during stabilization")
+            if int(docker_inspect("{{.RestartCount}}", UE_CONTAINER)) != 0:
+                raise ReplayError("UE container restarted during stabilization")
+            time.sleep(
+                min(1.0, max(0.0, stabilization_deadline - time.monotonic()))
+            )
+        observation_start_ue_log = run_command("docker", "logs", UE_CONTAINER)
+        observation_start_gnb_log = run_command("docker", "logs", GNB_CONTAINER)
         ping = subprocess.Popen(
             (
                 "docker",
@@ -379,9 +426,15 @@ def run_one_replay(
                 raise ReplayError("UE container restarted")
             ue_log = run_command("docker", "logs", UE_CONTAINER)
             gnb_log = run_command("docker", "logs", GNB_CONTAINER)
-            if _critical_failure_seen(ue_log, gnb_log):
+            observation_ue_log = _log_suffix(
+                ue_log, observation_start_ue_log, "UE"
+            )
+            observation_gnb_log = _log_suffix(
+                gnb_log, observation_start_gnb_log, "gNB"
+            )
+            if _critical_failure_seen(observation_ue_log, observation_gnb_log):
                 raise ReplayError("critical PBCH/PUSCH/RA/RLF/sync marker observed")
-            rows = parse_cirdb_debug(gnb_log)
+            rows = parse_cirdb_debug(observation_gnb_log)
             if rows and rows[-1]["maximum_consecutive_skipped_cirdb_snapshots"] > (
                 MAX_CONSECUTIVE_SKIPPED
             ):
@@ -394,11 +447,17 @@ def run_one_replay(
             ping_output, _ = ping.communicate(timeout=10)
         ue_log = run_command("docker", "logs", UE_CONTAINER)
         gnb_log = run_command("docker", "logs", GNB_CONTAINER)
+        observation_ue_log = _log_suffix(ue_log, observation_start_ue_log, "UE")
+        observation_gnb_log = _log_suffix(gnb_log, observation_start_gnb_log, "gNB")
         evaluation = evaluate_replay(
             ue_log=ue_log,
             gnb_log=gnb_log,
             attachment_checks=attachment_checks,
             ping_output=ping_output,
+            startup_ue_log=observation_start_ue_log,
+            startup_gnb_log=observation_start_gnb_log,
+            observation_ue_log=observation_ue_log,
+            observation_gnb_log=observation_gnb_log,
             require_cirdb=require_cirdb,
             minimum_telemetry_seconds=minimum_telemetry_seconds,
         )
@@ -441,6 +500,8 @@ def execute(args: argparse.Namespace) -> int:
         raise ReplayError("gNB min_rxtxtime must be positive")
     if args.observation_seconds <= 0:
         raise ReplayError("observation seconds must be positive")
+    if args.stabilization_seconds < 0:
+        raise ReplayError("stabilization seconds must not be negative")
     if not 0 < args.minimum_telemetry_seconds <= args.observation_seconds:
         raise ReplayError(
             "minimum telemetry seconds must be positive and no greater than observation seconds"
@@ -501,6 +562,7 @@ def execute(args: argparse.Namespace) -> int:
                     args.observation_seconds,
                     args.minimum_telemetry_seconds,
                     args.channel_mode == "cirdb",
+                    args.stabilization_seconds,
                 )
             )
     except (KeyboardInterrupt, OSError, ReplayError, subprocess.SubprocessError) as exc:
@@ -563,6 +625,7 @@ def execute(args: argparse.Namespace) -> int:
         "repetitions_required": args.repetitions,
         "observation_seconds": args.observation_seconds,
         "minimum_telemetry_seconds": args.minimum_telemetry_seconds,
+        "stabilization_seconds": args.stabilization_seconds,
         "replays": evaluations,
         "rollback": rollback,
     }
@@ -588,6 +651,7 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--gnb-min-rxtxtime", type=int, default=3)
     root.add_argument("--repetitions", type=int, default=REPETITIONS)
     root.add_argument("--observation-seconds", type=float, default=OBSERVATION_SECONDS)
+    root.add_argument("--stabilization-seconds", type=float, default=0.0)
     root.add_argument(
         "--minimum-telemetry-seconds",
         type=float,

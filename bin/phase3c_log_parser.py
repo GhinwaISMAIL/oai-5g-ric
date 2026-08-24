@@ -49,12 +49,22 @@ def _counts(text: str, patterns: dict[str, re.Pattern[str]]) -> dict[str, int]:
     return {name: len(pattern.findall(text)) for name, pattern in patterns.items()}
 
 
-def parse_replay_logs(ue_text: str, gnb_text: str) -> dict[str, Any]:
+def parse_replay_logs(
+    ue_text: str,
+    gnb_text: str,
+    *,
+    ue_failure_text: str | None = None,
+    gnb_failure_text: str | None = None,
+) -> dict[str, Any]:
+    failure_ue_text = ue_text if ue_failure_text is None else ue_failure_text
+    failure_gnb_text = gnb_text if gnb_failure_text is None else gnb_failure_text
     ue_required = _counts(ue_text, UE_REQUIRED)
     gnb_required = _counts(gnb_text, GNB_REQUIRED)
-    ue_failures = _counts(ue_text, UE_FAILURES)
-    gnb_failures = _counts(gnb_text, GNB_FAILURES)
-    dtx_values = [int(value) for value in ULSCH_DTX_COUNTER.findall(gnb_text)]
+    ue_failures = _counts(failure_ue_text, UE_FAILURES)
+    gnb_failures = _counts(failure_gnb_text, GNB_FAILURES)
+    dtx_values = [
+        int(value) for value in ULSCH_DTX_COUNTER.findall(failure_gnb_text)
+    ]
     gates = {
         **{f"ue_required_{name}": count >= 1 for name, count in ue_required.items()},
         **{f"gnb_required_{name}": count >= 1 for name, count in gnb_required.items()},
@@ -64,6 +74,11 @@ def parse_replay_logs(ue_text: str, gnb_text: str) -> dict[str, Any]:
     gates = {name: bool(value) for name, value in gates.items()}
     return {
         "schema_version": 2,
+        "failure_window": (
+            "full_log"
+            if ue_failure_text is None and gnb_failure_text is None
+            else "provided_observation_suffix"
+        ),
         "required_marker_counts": {"ue": ue_required, "gnb": gnb_required},
         "failure_marker_counts": {"ue": ue_failures, "gnb": gnb_failures},
         "reported_ulsch_dtx_counter_max": max(dtx_values) if dtx_values else None,
