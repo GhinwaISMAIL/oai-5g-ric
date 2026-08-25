@@ -35,6 +35,7 @@ def test_exact_case_benchmark_patch_is_idempotent(tmp_path: Path) -> None:
     patched = benchmark.read_text()
     assert MODULE.MARKER in patched
     assert "Args({1, 1, 23040, 8, 4})" in patched
+    assert "Args({1, 1, 61440, 16, 16})" in patched
     assert "Iterations(1000)" in patched
     assert "init_tpool(num_workers)" in patched
     assert "23040" in correctness.read_text()

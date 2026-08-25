@@ -35,6 +35,7 @@ REGISTRATION_ANCHOR = """BENCHMARK(BM_channel_convolution_tpool)
 REGISTRATION_REPLACEMENT = """/* Phase3C_1x1_L8_Samples23040_Workers4 */
 BENCHMARK(BM_channel_convolution_tpool)
     ->Args({1, 1, 23040, 8, 4})
+    ->Args({1, 1, 61440, 16, 16})
     ->Iterations(1000)
     ->Unit(benchmark::kMicrosecond);
 """
@@ -57,6 +58,7 @@ def patch_benchmark(path: Path) -> bool:
             "int num_workers = state.range(4);",
             "init_tpool(num_workers)",
             "Args({1, 1, 23040, 8, 4})",
+            "Args({1, 1, 61440, 16, 16})",
             "Iterations(1000)",
         )
         missing = [value for value in required if value not in text]
