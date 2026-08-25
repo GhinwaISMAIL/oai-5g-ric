@@ -26,6 +26,7 @@ def test_plan_is_benchmark_only_and_abba(tmp_path: Path) -> None:
     assert [item["label"] for item in plan["benchmark_invocations"]] == list(
         MODULE.ABBA
     )
+    assert "-DENABLE_TESTS=ON" in plan["configure_and_build"]
     assert "23040" not in plan["configure_and_build"]
     assert "benchmark_channel_pipeline" in plan["benchmark_binary"]
     assert "test_channel_pipeline" in plan["correctness_binary"]

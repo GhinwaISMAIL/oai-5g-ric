@@ -232,6 +232,7 @@ def build_plan(source: Path, work_root: Path, output_root: Path) -> dict[str, An
     configure_and_build = (
         "source oaienv && "
         "cmake -GNinja -S /oai-ran -B /oai-ran/cmake_targets/phase3c11_bench/build "
+        "-DENABLE_TESTS=ON "
         "-DAVX512=OFF -DOAI_VRTSIM_TAPS_CLIENT=ON "
         "-DCMAKE_BUILD_TYPE=RelWithDebInfo "
         "-DCMAKE_C_FLAGS=-Werror -DCMAKE_CXX_FLAGS=-Werror && "
