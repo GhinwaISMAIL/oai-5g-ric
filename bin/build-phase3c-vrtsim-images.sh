@@ -8,6 +8,7 @@ EXPECTED_OAI_COMMIT="70508ebaf52f2aae420566d380c6537f2efb9f0c"
 RUNNER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 MEASUREMENT_SOURCE="$SOURCE_DIR/openair1/PHY/NR_UE_ESTIMATION/nr_ue_measurements.c"
 CIRDB_SOURCE="$SOURCE_DIR/radio/vrtsim/cirdb_provider.c"
+VRTSIM_SOURCE="$SOURCE_DIR/radio/vrtsim/vrtsim.c"
 DOCKERFILE="$RUNNER_DIR/../etc/Dockerfile.phase3c-vrtsim"
 
 [ "$(uname -m)" = "x86_64" ] || {
@@ -27,7 +28,8 @@ ACTUAL_OAI_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
 
 python3 "$RUNNER_DIR/patch-oai-ue-radio-measurements.py" "$MEASUREMENT_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-vrtsim-cirdb-telemetry.py" "$CIRDB_SOURCE"
-git -C "$SOURCE_DIR" diff --check -- "$MEASUREMENT_SOURCE" "$CIRDB_SOURCE"
+python3 "$RUNNER_DIR/patch-oai-vrtsim-runtime-telemetry.py" "$VRTSIM_SOURCE"
+git -C "$SOURCE_DIR" diff --check -- "$MEASUREMENT_SOURCE" "$CIRDB_SOURCE" "$VRTSIM_SOURCE"
 
 docker build \
     --target ran-base \

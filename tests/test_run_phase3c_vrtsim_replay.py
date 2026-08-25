@@ -79,6 +79,38 @@ def test_cirdb_debug_parser_requires_every_field() -> None:
         )
 
 
+def test_vrtsim_runtime_parser_requires_complete_finite_rows() -> None:
+    marker = (
+        "VRTSIM_RUNTIME_DEBUG_V1 role=server elapsed_second=7 "
+        "tx_timestamp=322560000 current_sample=322559000 "
+        "channel_processing_us=42.500 average_tx_budget_us=900.250 "
+        "tx_samples_late=0 tx_samples_total=322560000 "
+        "rx_samples_late=1536 rx_samples_total=322560000 tx_early=0 rx_early=1"
+    )
+    rows = MODULE.parse_vrtsim_runtime_debug(marker)
+
+    assert rows == [
+        {
+            "role": "server",
+            "elapsed_second": 7,
+            "tx_timestamp": 322560000,
+            "current_sample": 322559000,
+            "channel_processing_us": 42.5,
+            "average_tx_budget_us": 900.25,
+            "tx_samples_late": 0,
+            "tx_samples_total": 322560000,
+            "rx_samples_late": 1536,
+            "rx_samples_total": 322560000,
+            "tx_early": 0,
+            "rx_early": 1,
+        }
+    ]
+    with pytest.raises(MODULE.ReplayError, match="incomplete VRTSIM runtime"):
+        MODULE.parse_vrtsim_runtime_debug(
+            "VRTSIM_RUNTIME_DEBUG_V1 role=server elapsed_second=7"
+        )
+
+
 def test_ping_parser_accepts_iputils_summary() -> None:
     result = MODULE.parse_ping_summary(
         "330 packets transmitted, 329 received, 0.30303% packet loss, time 330000ms"
@@ -274,3 +306,4 @@ def test_attachment_failure_captures_logs_before_rollback(
     )
     assert (output / "vrtsim-1-ping.log").read_text() == "\n"
     assert (output / "vrtsim-1-attachment.json").is_file()
+    assert (output / "vrtsim-1-runtime.json").read_text() == "[]\n"

@@ -20,5 +20,6 @@ def test_build_script_is_pinned_and_applies_only_required_phase3c_patches() -> N
     assert "70508ebaf52f2aae420566d380c6537f2efb9f0c" in script
     assert "patch-oai-ue-radio-measurements.py" in script
     assert "patch-oai-vrtsim-cirdb-telemetry.py" in script
+    assert "patch-oai-vrtsim-runtime-telemetry.py" in script
     assert "Dockerfile.phase3c-vrtsim" in script
     assert script.count("docker run --rm") == 2

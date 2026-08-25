@@ -203,6 +203,39 @@ def parse_cirdb_debug(log_text: str) -> list[dict[str, float]]:
     return rows
 
 
+def parse_vrtsim_runtime_debug(log_text: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    integer_fields = {
+        "elapsed_second",
+        "tx_timestamp",
+        "current_sample",
+        "tx_samples_late",
+        "tx_samples_total",
+        "rx_samples_late",
+        "rx_samples_total",
+        "tx_early",
+        "rx_early",
+    }
+    float_fields = {"channel_processing_us", "average_tx_budget_us"}
+    required = integer_fields | float_fields | {"role"}
+    for line in log_text.splitlines():
+        position = line.find("VRTSIM_RUNTIME_DEBUG_V1")
+        if position < 0:
+            continue
+        fields = dict(KEY_VALUE.findall(line[position:]))
+        if not required.issubset(fields):
+            raise ReplayError(f"incomplete VRTSIM runtime debug row: {line}")
+        row: dict[str, Any] = {"role": fields["role"]}
+        row.update({name: int(fields[name]) for name in integer_fields})
+        row.update({name: float(fields[name]) for name in float_fields})
+        if row["role"] not in {"server", "client"}:
+            raise ReplayError(f"invalid VRTSIM runtime role: {line}")
+        if not all(math.isfinite(row[name]) for name in float_fields):
+            raise ReplayError(f"non-finite VRTSIM runtime debug row: {line}")
+        rows.append(row)
+    return rows
+
+
 def parse_ping_summary(text: str) -> dict[str, float]:
     match = PING_SUMMARY.search(text)
     if not match:
@@ -492,6 +525,10 @@ def run_one_replay(
         (output / f"{replay_id}-gnb.log").write_text(gnb_log + "\n")
         (output / f"{replay_id}-ping.log").write_text(ping_output + "\n")
         write_json(output / f"{replay_id}-attachment.json", attachment_checks)
+        write_json(
+            output / f"{replay_id}-runtime.json",
+            parse_vrtsim_runtime_debug(gnb_log),
+        )
 
 
 def make_output(root: Path) -> Path:
