@@ -123,6 +123,37 @@ def test_vrtsim_runtime_parser_requires_complete_finite_rows() -> None:
         )
 
 
+def test_vrtsim_split_parser_requires_complete_consistent_rows() -> None:
+    marker = (
+        "VRTSIM_SPLIT_DEBUG_V1 role=server elapsed_second=7 total_us=530.500 "
+        "cirdb_update_us=40.000 preparation_us=20.000 convolution_us=200.000 "
+        "shared_write_us=260.000 history_copy_us=5.000 accounted_us=525.000 "
+        "residual_us=5.500"
+    )
+    rows = MODULE.parse_vrtsim_split_debug(marker)
+
+    assert rows == [
+        {
+            "role": "server",
+            "elapsed_second": 7,
+            "total_us": 530.5,
+            "cirdb_update_us": 40.0,
+            "preparation_us": 20.0,
+            "convolution_us": 200.0,
+            "shared_write_us": 260.0,
+            "history_copy_us": 5.0,
+            "accounted_us": 525.0,
+            "residual_us": 5.5,
+        }
+    ]
+    with pytest.raises(MODULE.ReplayError, match="incomplete VRTSIM split"):
+        MODULE.parse_vrtsim_split_debug(
+            "VRTSIM_SPLIT_DEBUG_V1 role=server elapsed_second=7"
+        )
+    with pytest.raises(MODULE.ReplayError, match="inconsistent VRTSIM split total"):
+        MODULE.parse_vrtsim_split_debug(marker.replace("total_us=530.500", "total_us=900.000"))
+
+
 def test_ping_parser_accepts_iputils_summary() -> None:
     result = MODULE.parse_ping_summary(
         "330 packets transmitted, 329 received, 0.30303% packet loss, time 330000ms"
@@ -319,3 +350,4 @@ def test_attachment_failure_captures_logs_before_rollback(
     assert (output / "vrtsim-1-ping.log").read_text() == "\n"
     assert (output / "vrtsim-1-attachment.json").is_file()
     assert (output / "vrtsim-1-runtime.json").read_text() == "[]\n"
+    assert (output / "vrtsim-1-split-runtime.json").read_text() == "[]\n"

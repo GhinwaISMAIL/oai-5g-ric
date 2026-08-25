@@ -238,6 +238,49 @@ def parse_vrtsim_runtime_debug(log_text: str) -> list[dict[str, Any]]:
     return rows
 
 
+def parse_vrtsim_split_debug(log_text: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    integer_fields = {"elapsed_second"}
+    float_fields = {
+        "total_us",
+        "cirdb_update_us",
+        "preparation_us",
+        "convolution_us",
+        "shared_write_us",
+        "history_copy_us",
+        "accounted_us",
+        "residual_us",
+    }
+    required = integer_fields | float_fields | {"role"}
+    for line in log_text.splitlines():
+        position = line.find("VRTSIM_SPLIT_DEBUG_V1")
+        if position < 0:
+            continue
+        fields = dict(KEY_VALUE.findall(line[position:]))
+        if not required.issubset(fields):
+            raise ReplayError(f"incomplete VRTSIM split debug row: {line}")
+        row: dict[str, Any] = {"role": fields["role"]}
+        row.update({name: int(fields[name]) for name in integer_fields})
+        row.update({name: float(fields[name]) for name in float_fields})
+        if row["role"] not in {"server", "client"}:
+            raise ReplayError(f"invalid VRTSIM split role: {line}")
+        if not all(math.isfinite(row[name]) for name in float_fields):
+            raise ReplayError(f"non-finite VRTSIM split debug row: {line}")
+        components = (
+            row["cirdb_update_us"]
+            + row["preparation_us"]
+            + row["convolution_us"]
+            + row["shared_write_us"]
+            + row["history_copy_us"]
+        )
+        if abs(components - row["accounted_us"]) > 0.01:
+            raise ReplayError(f"inconsistent VRTSIM split components: {line}")
+        if abs(row["accounted_us"] + row["residual_us"] - row["total_us"]) > 0.01:
+            raise ReplayError(f"inconsistent VRTSIM split total: {line}")
+        rows.append(row)
+    return rows
+
+
 def parse_ping_summary(text: str) -> dict[str, float]:
     match = PING_SUMMARY.search(text)
     if not match:
@@ -530,6 +573,10 @@ def run_one_replay(
         write_json(
             output / f"{replay_id}-runtime.json",
             parse_vrtsim_runtime_debug(gnb_log),
+        )
+        write_json(
+            output / f"{replay_id}-split-runtime.json",
+            parse_vrtsim_split_debug(gnb_log),
         )
 
 

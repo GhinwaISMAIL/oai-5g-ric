@@ -29,6 +29,7 @@ ACTUAL_OAI_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
 python3 "$RUNNER_DIR/patch-oai-ue-radio-measurements.py" "$MEASUREMENT_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-vrtsim-cirdb-telemetry.py" "$CIRDB_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-vrtsim-runtime-telemetry.py" "$VRTSIM_SOURCE"
+python3 "$RUNNER_DIR/patch-oai-vrtsim-split-telemetry.py" "$VRTSIM_SOURCE"
 git -C "$SOURCE_DIR" diff --check -- "$MEASUREMENT_SOURCE" "$CIRDB_SOURCE" "$VRTSIM_SOURCE"
 
 docker build \
