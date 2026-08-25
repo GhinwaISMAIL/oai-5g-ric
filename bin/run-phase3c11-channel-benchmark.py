@@ -1,0 +1,361 @@
+#!/usr/bin/env python3
+"""Run the frozen Phase 3C11 baseline-versus-balanced channel benchmark."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+OAI_REVISION = "70508ebaf52f2aae420566d380c6537f2efb9f0c"
+EXPECTED_SUBMODULES = {
+    "openair2/E2AP/flexric": "ef6d722f22191eea74089966983da1f5ec1fedd4",
+    "openair2/E2AP/flexric/ci-scripts/common": "20de484fa9025c9c342b8b945d89a10797ec2503",
+}
+BALANCE_PATCH_SHA256 = "66693c54be7fb62e36569d43d2c48ab1841a51b7fe69fbf077de2c80410825c6"
+BENCHMARK_PATCH_SHA256 = "7d07b2a13f22578d34af684e8463a19d1f239fec7ad79ca44fdeccd7ddd13d67"
+BASE_IMAGE = "phase3c11-ran-base:70508eb"
+ABBA = ("baseline-1", "optimized-1", "optimized-2", "baseline-2")
+BENCHMARK_SOURCE = Path("openair1/PHY/TOOLS/tests/benchmark_channel_pipeline.cpp")
+CORRECTNESS_SOURCE = Path("openair1/PHY/TOOLS/tests/test_channel_pipeline.cpp")
+PIPELINE_SOURCE = Path("openair1/SIMULATION/TOOLS/channel_pipeline.c")
+
+
+class BenchmarkError(RuntimeError):
+    pass
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def run_command(
+    args: list[str],
+    *,
+    cwd: Path | None = None,
+    log_path: Path | None = None,
+    check: bool = True,
+) -> str:
+    result = subprocess.run(
+        args,
+        cwd=cwd,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if log_path is not None:
+        log_path.write_text(result.stdout)
+    if check and result.returncode != 0:
+        raise BenchmarkError(
+            f"command failed ({result.returncode}): {' '.join(args)}\n{result.stdout[-2000:]}"
+        )
+    return result.stdout.strip()
+
+
+def require_hash(path: Path, expected: str) -> None:
+    if not path.is_file() or path.is_symlink():
+        raise BenchmarkError(f"missing or unsafe frozen input: {path}")
+    observed = sha256(path)
+    if observed != expected:
+        raise BenchmarkError(
+            f"checksum mismatch for {path}: expected {expected}, observed {observed}"
+        )
+
+
+def require_safe_new_directory(path: Path, label: str) -> None:
+    if not path.is_absolute() or path == Path("/"):
+        raise BenchmarkError(f"{label} must be an explicit absolute non-root path")
+    if path.exists():
+        raise BenchmarkError(f"{label} already exists: {path}")
+
+
+def source_preflight(source: Path) -> dict[str, Any]:
+    if not (source / ".git").exists():
+        raise BenchmarkError(f"not a Git checkout: {source}")
+    head = run_command(["git", "-C", str(source), "rev-parse", "HEAD"])
+    if head != OAI_REVISION:
+        raise BenchmarkError(f"OAI revision mismatch: {head}")
+    status = run_command(["git", "-C", str(source), "status", "--porcelain"])
+    if status:
+        raise BenchmarkError(f"source checkout is not clean:\n{status}")
+    alternates = run_command(
+        ["git", "-C", str(source), "config", "--get", "objects.info.alternates"],
+        check=False,
+    )
+    if alternates:
+        raise BenchmarkError(f"source checkout has Git alternates: {alternates}")
+    submodule_text = run_command(
+        ["git", "-C", str(source), "submodule", "status", "--recursive"]
+    )
+    observed: dict[str, str] = {}
+    for line in submodule_text.splitlines():
+        fields = line.strip().split()
+        if len(fields) >= 2:
+            observed[fields[1]] = fields[0].lstrip("-+")
+    if observed != EXPECTED_SUBMODULES:
+        raise BenchmarkError(
+            f"submodule mismatch: expected {EXPECTED_SUBMODULES}, observed {observed}"
+        )
+    return {"head": head, "submodules": observed, "alternates_present": False}
+
+
+def container_command(source: Path, script: str, *extra: str) -> list[str]:
+    command = [
+        "docker",
+        "run",
+        "--rm",
+        "--volume",
+        f"{source}:/oai-ran",
+        "--workdir",
+        "/oai-ran",
+    ]
+    command.extend(extra)
+    command.extend([BASE_IMAGE, "/bin/bash", "-lc", script])
+    return command
+
+
+def build_plan(source: Path, work_root: Path, output_root: Path) -> dict[str, Any]:
+    baseline = work_root / "baseline"
+    optimized = work_root / "optimized"
+    configure_and_build = (
+        "source oaienv && "
+        "cmake -GNinja -S /oai-ran -B /oai-ran/cmake_targets/phase3c11_bench/build "
+        "-DAVX512=OFF -DOAI_VRTSIM_TAPS_CLIENT=ON "
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo "
+        "-DCMAKE_C_FLAGS=-Werror -DCMAKE_CXX_FLAGS=-Werror && "
+        "cmake --build /oai-ran/cmake_targets/phase3c11_bench/build "
+        "--target benchmark_channel_pipeline test_channel_pipeline -- -j$(nproc)"
+    )
+    correctness = (
+        "/oai-ran/cmake_targets/phase3c11_bench/build/openair1/PHY/TOOLS/tests/"
+        "test_channel_pipeline"
+    )
+    benchmark_binary = (
+        "/oai-ran/cmake_targets/phase3c11_bench/build/openair1/PHY/TOOLS/tests/"
+        "benchmark_channel_pipeline"
+    )
+    invocations: list[dict[str, str]] = []
+    for label in ABBA:
+        condition = label.split("-", 1)[0]
+        source_path = baseline if condition == "baseline" else optimized
+        invocations.append(
+            {
+                "label": label,
+                "condition": condition,
+                "source": str(source_path),
+                "json": str(output_root / f"{label}.json"),
+                "log": str(output_root / f"{label}.log"),
+            }
+        )
+    return {
+        "source": str(source),
+        "work_root": str(work_root),
+        "output_root": str(output_root),
+        "baseline": str(baseline),
+        "optimized": str(optimized),
+        "base_image": BASE_IMAGE,
+        "configure_and_build": configure_and_build,
+        "correctness_binary": correctness,
+        "benchmark_binary": benchmark_binary,
+        "benchmark_invocations": invocations,
+        "network_services_started": False,
+    }
+
+
+def collect_metadata() -> dict[str, Any]:
+    commands = {
+        "uname": ["uname", "-a"],
+        "lscpu": ["lscpu"],
+        "nproc": ["nproc"],
+        "docker_version": ["docker", "version", "--format", "{{json .}}"],
+        "load_average": ["cat", "/proc/loadavg"],
+    }
+    values = {
+        name: run_command(command, check=False) for name, command in commands.items()
+    }
+    governor_paths = sorted(
+        Path("/sys/devices/system/cpu").glob("cpu[0-9]*/cpufreq/scaling_governor")
+    )
+    values["cpu_governors"] = {
+        str(path): path.read_text().strip() for path in governor_paths if path.is_file()
+    }
+    values["python"] = platform.python_version()
+    return values
+
+
+def evidence_hashes(output_root: Path) -> dict[str, str]:
+    return {
+        str(path.relative_to(output_root)): sha256(path)
+        for path in sorted(output_root.rglob("*"))
+        if path.is_file() and path.name != "execution_state.json"
+    }
+
+
+def execute(args: argparse.Namespace) -> int:
+    source = Path(args.source).resolve()
+    work_root = Path(args.work_root).resolve()
+    output_root = Path(args.output_root).resolve()
+    profile_bin = Path(__file__).resolve().parent
+    plan = build_plan(source, work_root, output_root)
+    if args.dry_run:
+        print(json.dumps(plan, indent=2, sort_keys=True))
+        return 0
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        raise BenchmarkError("run the Phase 3C11 benchmark as root")
+    require_safe_new_directory(work_root, "work root")
+    require_safe_new_directory(output_root, "output root")
+    if platform.machine() != "x86_64":
+        raise BenchmarkError(f"expected x86_64, observed {platform.machine()}")
+    benchmark_patch = profile_bin / "patch-oai-channel-pipeline-benchmark.py"
+    balance_patch = profile_bin / "patch-oai-channel-pipeline-balance.py"
+    require_hash(benchmark_patch, BENCHMARK_PATCH_SHA256)
+    require_hash(balance_patch, BALANCE_PATCH_SHA256)
+    preflight = source_preflight(source)
+
+    work_root.mkdir(parents=True)
+    output_root.mkdir(parents=True)
+    state: dict[str, Any] = {
+        "schema_version": 1,
+        "status": "running",
+        "started_at_epoch": time.time(),
+        "plan": plan,
+        "source_preflight": preflight,
+    }
+    state_path = output_root / "execution_state.json"
+    try:
+        baseline = work_root / "baseline"
+        optimized = work_root / "optimized"
+        shutil.copytree(source, baseline, symlinks=True)
+        shutil.copytree(source, optimized, symlinks=True)
+        for condition in (baseline, optimized):
+            run_command(
+                [
+                    sys.executable,
+                    str(benchmark_patch),
+                    str(condition / BENCHMARK_SOURCE),
+                    str(condition / CORRECTNESS_SOURCE),
+                ]
+            )
+        run_command(
+            [sys.executable, str(balance_patch), str(optimized / PIPELINE_SOURCE)]
+        )
+        expected_diffs = {
+            "baseline": sorted([str(BENCHMARK_SOURCE), str(CORRECTNESS_SOURCE)]),
+            "optimized": sorted(
+                [str(BENCHMARK_SOURCE), str(CORRECTNESS_SOURCE), str(PIPELINE_SOURCE)]
+            ),
+        }
+        for name, condition in (("baseline", baseline), ("optimized", optimized)):
+            run_command(["git", "-C", str(condition), "diff", "--check"])
+            changed = sorted(
+                run_command(["git", "-C", str(condition), "diff", "--name-only"])
+                .splitlines()
+            )
+            if changed != expected_diffs[name]:
+                raise BenchmarkError(
+                    f"unexpected {name} source differences: {changed}"
+                )
+            (output_root / f"{name}-source.diff").write_text(
+                run_command(["git", "-C", str(condition), "diff"]) + "\n"
+            )
+
+        run_command(
+            [
+                "docker",
+                "build",
+                "--target",
+                "ran-base",
+                "--tag",
+                BASE_IMAGE,
+                "--file",
+                str(source / "docker/Dockerfile.base.ubuntu"),
+                str(source),
+            ],
+            log_path=output_root / "base-image-build.log",
+        )
+        state["base_image_id"] = run_command(
+            ["docker", "image", "inspect", BASE_IMAGE, "--format", "{{.Id}}"]
+        )
+        state["metadata_before"] = collect_metadata()
+
+        for name, condition in (("baseline", baseline), ("optimized", optimized)):
+            run_command(
+                container_command(condition, plan["configure_and_build"]),
+                log_path=output_root / f"{name}-build.log",
+            )
+            run_command(
+                container_command(condition, plan["correctness_binary"]),
+                log_path=output_root / f"{name}-correctness.log",
+            )
+            binary = condition / plan["benchmark_binary"].removeprefix("/oai-ran/")
+            state[f"{name}_benchmark_binary_sha256"] = sha256(binary)
+
+        for invocation in plan["benchmark_invocations"]:
+            condition = baseline if invocation["condition"] == "baseline" else optimized
+            label = invocation["label"]
+            benchmark_command = (
+                f"{plan['benchmark_binary']} "
+                "--benchmark_repetitions=30 "
+                "--benchmark_report_aggregates_only=false "
+                "--benchmark_min_warmup_time=1 "
+                f"--benchmark_out=/evidence/{label}.json "
+                "--benchmark_out_format=json"
+            )
+            run_command(
+                container_command(
+                    condition,
+                    benchmark_command,
+                    "--volume",
+                    f"{output_root}:/evidence",
+                ),
+                log_path=output_root / f"{label}.log",
+            )
+
+        state["metadata_after"] = collect_metadata()
+        state["status"] = "completed"
+        state["completed_at_epoch"] = time.time()
+        state["evidence_sha256"] = evidence_hashes(output_root)
+        state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+        print(f"OUTPUT_DIR={output_root}")
+        return 0
+    except (OSError, BenchmarkError, subprocess.SubprocessError) as error:
+        state["status"] = "failed"
+        state["error"] = str(error)
+        state["failed_at_epoch"] = time.time()
+        state["evidence_sha256"] = evidence_hashes(output_root)
+        state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+        raise
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser()
+    root.add_argument("--source", required=True)
+    root.add_argument("--work-root", required=True)
+    root.add_argument("--output-root", required=True)
+    root.add_argument("--dry-run", action="store_true")
+    return root
+
+
+def main() -> int:
+    try:
+        return execute(parser().parse_args())
+    except (OSError, BenchmarkError, subprocess.SubprocessError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
