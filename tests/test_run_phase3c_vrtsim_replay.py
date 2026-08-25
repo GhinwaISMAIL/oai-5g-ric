@@ -66,6 +66,18 @@ def test_passthrough_override_changes_only_channel_processing(tmp_path: Path) ->
     assert "/cirdb" not in override
 
 
+def test_override_accepts_frozen_unique_image_references(tmp_path: Path) -> None:
+    override = MODULE.render_override(
+        tmp_path / "trace",
+        tmp_path / "shared",
+        ue_image="phase3c-ue:immutable",
+        gnb_image="phase3c-gnb:immutable",
+    )
+
+    assert "image: phase3c-ue:immutable" in override
+    assert "image: phase3c-gnb:immutable" in override
+
+
 def test_cirdb_debug_parser_requires_every_field() -> None:
     _, gnb = _healthy_logs(2)
     rows = MODULE.parse_cirdb_debug(gnb)

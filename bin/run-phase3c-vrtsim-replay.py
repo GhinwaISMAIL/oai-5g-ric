@@ -144,6 +144,8 @@ def render_override(
     channel_mode: str = "cirdb",
     server_timescale: float = 1.0,
     gnb_min_rxtxtime: int = 3,
+    ue_image: str = UE_IMAGE,
+    gnb_image: str = GNB_IMAGE,
 ) -> str:
     if channel_mode not in {"cirdb", "passthrough"}:
         raise ReplayError(f"unsupported channel mode: {channel_mode}")
@@ -158,7 +160,7 @@ def render_override(
         trace_volume = f"\n      - {trace_dir}:/cirdb:ro"
     return f'''services:
   {GNB_SERVICE}:
-    image: {GNB_IMAGE}
+    image: {gnb_image}
     ipc: host
     environment:
       TZ: Europe/Paris
@@ -167,7 +169,7 @@ def render_override(
     volumes:
       - {shared_tmp}:/tmp{trace_volume}
   {UE_SERVICE}:
-    image: {UE_IMAGE}
+    image: {ue_image}
     ipc: host
     environment:
       TZ: Europe/Paris
@@ -568,8 +570,8 @@ def execute(args: argparse.Namespace) -> int:
         require_hash(trace_dir / "cir_db.bin", trace_profile["binary_sha256"])
         require_hash(trace_dir / "vrtsim.yaml", trace_profile["sidecar_sha256"])
     for reference, expected_id in (
-        (UE_IMAGE, args.expected_ue_image_id),
-        (GNB_IMAGE, args.expected_gnb_image_id),
+        (args.ue_image, args.expected_ue_image_id),
+        (args.gnb_image, args.expected_gnb_image_id),
     ):
         if image_inspect("{{.Id}}", reference) != expected_id:
             raise ReplayError(f"image ID mismatch: {reference}")
@@ -589,6 +591,8 @@ def execute(args: argparse.Namespace) -> int:
         channel_mode=args.channel_mode,
         server_timescale=args.server_timescale,
         gnb_min_rxtxtime=args.gnb_min_rxtxtime,
+        ue_image=args.ue_image,
+        gnb_image=args.gnb_image,
     )
     if override_file.exists() and override_file.read_text() != override:
         raise ReplayError(f"refusing to overwrite a different override: {override_file}")
@@ -666,9 +670,9 @@ def execute(args: argparse.Namespace) -> int:
         "trace_sidecar_sha256": sha256(trace_dir / "vrtsim.yaml")
         if args.channel_mode == "cirdb"
         else None,
-        "ue_image": UE_IMAGE,
+        "ue_image": args.ue_image,
         "ue_image_id": args.expected_ue_image_id,
-        "gnb_image": GNB_IMAGE,
+        "gnb_image": args.gnb_image,
         "gnb_image_id": args.expected_gnb_image_id,
         "channel_mode": args.channel_mode,
         "trace_profile": args.trace_profile if args.channel_mode == "cirdb" else None,
@@ -716,6 +720,8 @@ def parser() -> argparse.ArgumentParser:
     )
     root.add_argument("--expected-ue-image-id", required=True)
     root.add_argument("--expected-gnb-image-id", required=True)
+    root.add_argument("--ue-image", default=UE_IMAGE)
+    root.add_argument("--gnb-image", default=GNB_IMAGE)
     return root
 
 
