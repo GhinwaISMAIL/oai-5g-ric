@@ -124,6 +124,60 @@ def wait_for_cell_restore(timeout_seconds: float = 180.0) -> None:
     raise BenchmarkError("cell baseline was not healthy and attached after restore")
 
 
+def repository_storage_metadata(repository: Path) -> dict[str, Any]:
+    git_directory = Path(
+        run_command(["git", "-C", str(repository), "rev-parse", "--absolute-git-dir"])
+    )
+    common_directory_text = run_command(
+        ["git", "-C", str(repository), "rev-parse", "--git-common-dir"]
+    )
+    common_directory = Path(common_directory_text)
+    if not common_directory.is_absolute():
+        common_directory = (repository / common_directory).resolve()
+    alternates_path_text = run_command(
+        [
+            "git",
+            "-C",
+            str(repository),
+            "rev-parse",
+            "--git-path",
+            "objects/info/alternates",
+        ]
+    )
+    alternates_path = Path(alternates_path_text)
+    if not alternates_path.is_absolute():
+        alternates_path = (repository / alternates_path).resolve()
+    alternates_file = ""
+    if alternates_path.is_file():
+        alternates_file = alternates_path.read_text().strip()
+    alternates_config = run_command(
+        ["git", "-C", str(repository), "config", "--get", "objects.info.alternates"],
+        check=False,
+    )
+    alternates_environment = os.environ.get("GIT_ALTERNATE_OBJECT_DIRECTORIES", "")
+    if alternates_file or alternates_config or alternates_environment:
+        raise BenchmarkError(
+            f"repository has Git alternates: {repository}; "
+            f"file={alternates_file!r}, config={alternates_config!r}, "
+            f"environment={alternates_environment!r}"
+        )
+    return {
+        "git_directory": str(git_directory),
+        "common_directory": str(common_directory),
+        "alternates_present": False,
+        "remote_origin_promisor": run_command(
+            ["git", "-C", str(repository), "config", "--get", "remote.origin.promisor"],
+            check=False,
+        )
+        or None,
+        "extensions_partial_clone": run_command(
+            ["git", "-C", str(repository), "config", "--get", "extensions.partialclone"],
+            check=False,
+        )
+        or None,
+    }
+
+
 def source_preflight(source: Path) -> dict[str, Any]:
     if not (source / ".git").exists():
         raise BenchmarkError(f"not a Git checkout: {source}")
@@ -133,12 +187,7 @@ def source_preflight(source: Path) -> dict[str, Any]:
     status = run_command(["git", "-C", str(source), "status", "--porcelain"])
     if status:
         raise BenchmarkError(f"source checkout is not clean:\n{status}")
-    alternates = run_command(
-        ["git", "-C", str(source), "config", "--get", "objects.info.alternates"],
-        check=False,
-    )
-    if alternates:
-        raise BenchmarkError(f"source checkout has Git alternates: {alternates}")
+    storage = {"main": repository_storage_metadata(source)}
     submodule_text = run_command(
         ["git", "-C", str(source), "submodule", "status", "--recursive"]
     )
@@ -151,7 +200,15 @@ def source_preflight(source: Path) -> dict[str, Any]:
         raise BenchmarkError(
             f"submodule mismatch: expected {EXPECTED_SUBMODULES}, observed {observed}"
         )
-    return {"head": head, "submodules": observed, "alternates_present": False}
+    for submodule in sorted(observed):
+        storage[submodule] = repository_storage_metadata(source / submodule)
+    return {
+        "head": head,
+        "submodules": observed,
+        "repository_storage": storage,
+        "working_tree_complete_for_pinned_revision": True,
+        "full_history_checkout_claimed": False,
+    }
 
 
 def container_command(source: Path, script: str, *extra: str) -> list[str]:

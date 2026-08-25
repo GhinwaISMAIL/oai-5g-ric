@@ -79,3 +79,78 @@ def test_container_command_mounts_source_and_optional_evidence(tmp_path: Path) -
     assert f"{tmp_path / 'source'}:/oai-ran" in command
     assert f"{tmp_path / 'output'}:/evidence" in command
     assert command[-3:] == [MODULE.BASE_IMAGE, "/bin/bash", "-lc", "run benchmark"][-3:]
+
+
+def test_repository_storage_metadata_records_promisor_without_claiming_alternates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    git_directory = repository / ".git"
+    (git_directory / "objects" / "info").mkdir(parents=True)
+    responses = {
+        "--absolute-git-dir": str(git_directory),
+        "--git-common-dir": str(git_directory),
+        "objects/info/alternates": str(git_directory / "objects" / "info" / "alternates"),
+        "objects.info.alternates": "",
+        "remote.origin.promisor": "true",
+        "extensions.partialclone": "origin",
+    }
+
+    def fake_run(command: list[str], **_: object) -> str:
+        return responses[command[-1]]
+
+    monkeypatch.setattr(MODULE, "run_command", fake_run)
+    metadata = MODULE.repository_storage_metadata(repository)
+
+    assert metadata["alternates_present"] is False
+    assert metadata["remote_origin_promisor"] == "true"
+    assert metadata["extensions_partial_clone"] == "origin"
+
+
+def test_repository_storage_metadata_rejects_alternates_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    git_directory = repository / ".git"
+    alternates_path = git_directory / "objects" / "info" / "alternates"
+    alternates_path.parent.mkdir(parents=True)
+    alternates_path.write_text("/external/objects\n")
+    responses = {
+        "--absolute-git-dir": str(git_directory),
+        "--git-common-dir": str(git_directory),
+        "objects/info/alternates": str(alternates_path),
+        "objects.info.alternates": "",
+    }
+
+    def fake_run(command: list[str], **_: object) -> str:
+        return responses[command[-1]]
+
+    monkeypatch.delenv("GIT_ALTERNATE_OBJECT_DIRECTORIES", raising=False)
+    monkeypatch.setattr(MODULE, "run_command", fake_run)
+    with pytest.raises(MODULE.BenchmarkError, match="Git alternates"):
+        MODULE.repository_storage_metadata(repository)
+
+
+def test_repository_storage_metadata_rejects_alternates_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    git_directory = repository / ".git"
+    (git_directory / "objects" / "info").mkdir(parents=True)
+    responses = {
+        "--absolute-git-dir": str(git_directory),
+        "--git-common-dir": str(git_directory),
+        "objects/info/alternates": str(git_directory / "objects" / "info" / "alternates"),
+        "objects.info.alternates": "",
+    }
+
+    def fake_run(command: list[str], **_: object) -> str:
+        return responses[command[-1]]
+
+    monkeypatch.setenv("GIT_ALTERNATE_OBJECT_DIRECTORIES", "/external/objects")
+    monkeypatch.setattr(MODULE, "run_command", fake_run)
+    with pytest.raises(MODULE.BenchmarkError, match="Git alternates"):
+        MODULE.repository_storage_metadata(repository)
