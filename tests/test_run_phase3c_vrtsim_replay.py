@@ -106,6 +106,28 @@ def test_replay_evaluator_accepts_complete_healthy_fixture() -> None:
     assert all(result["gate_results"].values())
 
 
+def test_identity_control_uses_frozen_hashes_and_one_snapshot_cycle() -> None:
+    profile = MODULE.TRACE_PROFILES["identity_l8_control"]
+    ue, gnb = _healthy_logs(31)
+    checks = [{"attached": True, "epoch": float(index)} for index in range(31)]
+    result = MODULE.evaluate_replay(
+        ue_log=ue,
+        gnb_log=gnb,
+        attachment_checks=checks,
+        ping_output="30 packets transmitted, 30 received, 0% packet loss, time 30000ms",
+        minimum_telemetry_seconds=20.0,
+        trace_snapshots=profile["snapshots"],
+    )
+
+    assert profile == {
+        "binary_sha256": "ae5140b4f95bf59256e1f82bc650f9391c3b06f5b7adf63bd92497a9c7c5bfc2",
+        "sidecar_sha256": "51e3157cb5c6aaa00a06b5bd00680c0acc51fa4ae7a1694ba0b0d671063c3cba",
+        "snapshots": 1,
+    }
+    assert result["replay_pass"] is True
+    assert result["trace_cycle_coverage_fraction"] == 1.0
+
+
 def test_replay_evaluator_rejects_pusch_failure() -> None:
     ue, gnb = _healthy_logs()
     gnb += "\nDetected UL Failure on PUSCH after 10 PUSCH DTX, stopping scheduling"

@@ -18,8 +18,18 @@ from typing import Any
 from phase3c_log_parser import parse_replay_logs
 
 COMPOSE_SHA256 = "db5aade37a4613a95c3f9682cdddf3bc5bc73d74f398c004105547c80b8d0260"
-TRACE_BINARY_SHA256 = "cb5b85bfdfe12768462b482c21145fe43618468a0bff9248beb5c9b5dea82550"
-TRACE_SIDECAR_SHA256 = "03b5031e81ea721501692e73e8ea908a57ae98e1814cee43887908da3dbf292c"
+TRACE_PROFILES = {
+    "tdl_b_full_cycle": {
+        "binary_sha256": "cb5b85bfdfe12768462b482c21145fe43618468a0bff9248beb5c9b5dea82550",
+        "sidecar_sha256": "03b5031e81ea721501692e73e8ea908a57ae98e1814cee43887908da3dbf292c",
+        "snapshots": 150_000,
+    },
+    "identity_l8_control": {
+        "binary_sha256": "ae5140b4f95bf59256e1f82bc650f9391c3b06f5b7adf63bd92497a9c7c5bfc2",
+        "sidecar_sha256": "51e3157cb5c6aaa00a06b5bd00680c0acc51fa4ae7a1694ba0b0d671063c3cba",
+        "snapshots": 1,
+    },
+}
 OAI_REVISION = "70508ebaf52f2aae420566d380c6537f2efb9f0c"
 UE_IMAGE = "oai-nr-ue-phase3c-vrtsim:70508eb"
 GNB_IMAGE = "oai-gnb-phase3c-vrtsim:70508eb"
@@ -345,6 +355,7 @@ def run_one_replay(
     minimum_telemetry_seconds: float = MINIMUM_TELEMETRY_SECONDS,
     require_cirdb: bool = True,
     stabilization_seconds: float = 0.0,
+    trace_snapshots: int = TRACE_SNAPSHOTS,
 ) -> dict[str, Any]:
     replay_id = f"vrtsim-{replay_number}"
     ping: subprocess.Popen[str] | None = None
@@ -460,6 +471,7 @@ def run_one_replay(
             observation_gnb_log=observation_gnb_log,
             require_cirdb=require_cirdb,
             minimum_telemetry_seconds=minimum_telemetry_seconds,
+            trace_snapshots=trace_snapshots,
         )
         write_json(output / f"{replay_id}-evaluation.json", evaluation)
         if not evaluation["replay_pass"]:
@@ -514,9 +526,10 @@ def execute(args: argparse.Namespace) -> int:
     print(f"OUTPUT_DIR={output}", flush=True)
 
     require_hash(compose_file, COMPOSE_SHA256)
+    trace_profile = TRACE_PROFILES[args.trace_profile]
     if args.channel_mode == "cirdb":
-        require_hash(trace_dir / "cir_db.bin", TRACE_BINARY_SHA256)
-        require_hash(trace_dir / "vrtsim.yaml", TRACE_SIDECAR_SHA256)
+        require_hash(trace_dir / "cir_db.bin", trace_profile["binary_sha256"])
+        require_hash(trace_dir / "vrtsim.yaml", trace_profile["sidecar_sha256"])
     for reference, expected_id in (
         (UE_IMAGE, args.expected_ue_image_id),
         (GNB_IMAGE, args.expected_gnb_image_id),
@@ -563,6 +576,7 @@ def execute(args: argparse.Namespace) -> int:
                     args.minimum_telemetry_seconds,
                     args.channel_mode == "cirdb",
                     args.stabilization_seconds,
+                    trace_profile["snapshots"],
                 )
             )
     except (KeyboardInterrupt, OSError, ReplayError, subprocess.SubprocessError) as exc:
@@ -620,6 +634,7 @@ def execute(args: argparse.Namespace) -> int:
         "gnb_image": GNB_IMAGE,
         "gnb_image_id": args.expected_gnb_image_id,
         "channel_mode": args.channel_mode,
+        "trace_profile": args.trace_profile if args.channel_mode == "cirdb" else None,
         "server_timescale": args.server_timescale,
         "gnb_min_rxtxtime": args.gnb_min_rxtxtime,
         "repetitions_required": args.repetitions,
@@ -646,6 +661,11 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--attach-timeout-seconds", type=float, default=180.0)
     root.add_argument(
         "--channel-mode", choices=("cirdb", "passthrough"), default="cirdb"
+    )
+    root.add_argument(
+        "--trace-profile",
+        choices=tuple(TRACE_PROFILES),
+        default="tdl_b_full_cycle",
     )
     root.add_argument("--server-timescale", type=float, default=1.0)
     root.add_argument("--gnb-min-rxtxtime", type=int, default=3)
