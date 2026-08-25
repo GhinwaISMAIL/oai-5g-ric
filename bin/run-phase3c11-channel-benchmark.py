@@ -23,6 +23,11 @@ EXPECTED_SUBMODULES = {
 BALANCE_PATCH_SHA256 = "66693c54be7fb62e36569d43d2c48ab1841a51b7fe69fbf077de2c80410825c6"
 BENCHMARK_PATCH_SHA256 = "7d07b2a13f22578d34af684e8463a19d1f239fec7ad79ca44fdeccd7ddd13d67"
 BASE_IMAGE = "phase3c11-ran-base:70508eb"
+COMPOSE_SHA256 = "db5aade37a4613a95c3f9682cdddf3bc5bc73d74f398c004105547c80b8d0260"
+GNB_CONTAINER = "ric5g-gnb-cell1"
+UE_CONTAINER = "ric5g-ue-cell1-1"
+GNB_SERVICE = "oai-gnb"
+UE_SERVICE = "oai-nr-ue1"
 ABBA = ("baseline-1", "optimized-1", "optimized-2", "baseline-2")
 BENCHMARK_SOURCE = Path("openair1/PHY/TOOLS/tests/benchmark_channel_pipeline.cpp")
 CORRECTNESS_SOURCE = Path("openair1/PHY/TOOLS/tests/test_channel_pipeline.cpp")
@@ -80,6 +85,43 @@ def require_safe_new_directory(path: Path, label: str) -> None:
         raise BenchmarkError(f"{label} must be an explicit absolute non-root path")
     if path.exists():
         raise BenchmarkError(f"{label} already exists: {path}")
+
+
+def docker_inspect(format_string: str, container: str) -> str:
+    return run_command(["docker", "inspect", "--format", format_string, container])
+
+
+def cell_baseline() -> dict[str, Any]:
+    gnb_health = docker_inspect("{{.State.Health.Status}}", GNB_CONTAINER)
+    if gnb_health != "healthy":
+        raise BenchmarkError(f"{GNB_CONTAINER} is not healthy: {gnb_health}")
+    attachment = run_command(
+        ["docker", "exec", UE_CONTAINER, "ip", "-o", "-4", "addr", "show", "oaitun_ue1"]
+    )
+    if "inet " not in attachment:
+        raise BenchmarkError(f"{UE_CONTAINER} is not attached")
+    return {
+        "gnb_image_id": docker_inspect("{{.Image}}", GNB_CONTAINER),
+        "ue_image_id": docker_inspect("{{.Image}}", UE_CONTAINER),
+        "gnb_restart_count": int(docker_inspect("{{.RestartCount}}", GNB_CONTAINER)),
+        "ue_restart_count": int(docker_inspect("{{.RestartCount}}", UE_CONTAINER)),
+        "gnb_health": gnb_health,
+        "ue_attachment": attachment,
+    }
+
+
+def wait_for_cell_restore(timeout_seconds: float = 180.0) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        health = docker_inspect("{{.State.Health.Status}}", GNB_CONTAINER)
+        attachment = run_command(
+            ["docker", "exec", UE_CONTAINER, "ip", "-o", "-4", "addr", "show", "oaitun_ue1"],
+            check=False,
+        )
+        if health == "healthy" and "inet " in attachment:
+            return
+        time.sleep(2.0)
+    raise BenchmarkError("cell baseline was not healthy and attached after restore")
 
 
 def source_preflight(source: Path) -> dict[str, Any]:
@@ -171,7 +213,13 @@ def build_plan(source: Path, work_root: Path, output_root: Path) -> dict[str, An
         "correctness_binary": correctness,
         "benchmark_binary": benchmark_binary,
         "benchmark_invocations": invocations,
-        "network_services_started": False,
+        "network_services_started_for_benchmark": False,
+        "radio_network_active_during_measurement": False,
+        "cell_services_quiesced_during_correctness_and_timing": [
+            GNB_CONTAINER,
+            UE_CONTAINER,
+        ],
+        "cell_restore_mandatory": True,
     }
 
 
@@ -221,9 +269,12 @@ def execute(args: argparse.Namespace) -> int:
         raise BenchmarkError(f"expected x86_64, observed {platform.machine()}")
     benchmark_patch = profile_bin / "patch-oai-channel-pipeline-benchmark.py"
     balance_patch = profile_bin / "patch-oai-channel-pipeline-balance.py"
+    compose_file = Path(args.compose_file).resolve()
     require_hash(benchmark_patch, BENCHMARK_PATCH_SHA256)
     require_hash(balance_patch, BALANCE_PATCH_SHA256)
+    require_hash(compose_file, COMPOSE_SHA256)
     preflight = source_preflight(source)
+    original_cell = cell_baseline()
 
     work_root.mkdir(parents=True)
     output_root.mkdir(parents=True)
@@ -233,8 +284,12 @@ def execute(args: argparse.Namespace) -> int:
         "started_at_epoch": time.time(),
         "plan": plan,
         "source_preflight": preflight,
+        "compose_file": str(compose_file),
+        "original_cell": original_cell,
     }
     state_path = output_root / "execution_state.json"
+    quiesced = False
+    execution_error: Exception | None = None
     try:
         baseline = work_root / "baseline"
         optimized = work_root / "optimized"
@@ -296,12 +351,24 @@ def execute(args: argparse.Namespace) -> int:
                 container_command(condition, plan["configure_and_build"]),
                 log_path=output_root / f"{name}-build.log",
             )
+            binary = condition / plan["benchmark_binary"].removeprefix("/oai-ran/")
+            state[f"{name}_benchmark_binary_sha256"] = sha256(binary)
+
+        if cell_baseline() != original_cell:
+            raise BenchmarkError("cell baseline changed during benchmark preparation")
+        quiesced = True
+        run_command(["docker", "stop", GNB_CONTAINER, UE_CONTAINER])
+        state["cell_quiesced_at_epoch"] = time.time()
+        for container in (GNB_CONTAINER, UE_CONTAINER):
+            observed_state = docker_inspect("{{.State.Status}}", container)
+            if observed_state == "running":
+                raise BenchmarkError(f"failed to quiesce {container}")
+
+        for name, condition in (("baseline", baseline), ("optimized", optimized)):
             run_command(
                 container_command(condition, plan["correctness_binary"]),
                 log_path=output_root / f"{name}-correctness.log",
             )
-            binary = condition / plan["benchmark_binary"].removeprefix("/oai-ran/")
-            state[f"{name}_benchmark_binary_sha256"] = sha256(binary)
 
         for invocation in plan["benchmark_invocations"]:
             condition = baseline if invocation["condition"] == "baseline" else optimized
@@ -325,19 +392,63 @@ def execute(args: argparse.Namespace) -> int:
             )
 
         state["metadata_after"] = collect_metadata()
+    except (OSError, BenchmarkError, subprocess.SubprocessError) as error:
+        execution_error = error
+    finally:
+        if quiesced:
+            rollback: dict[str, Any] = {"attempted": True, "passed": False}
+            try:
+                require_hash(compose_file, COMPOSE_SHA256)
+                run_command(
+                    [
+                        "docker",
+                        "compose",
+                        "--file",
+                        str(compose_file),
+                        "up",
+                        "-d",
+                        "--no-deps",
+                        "--force-recreate",
+                        GNB_SERVICE,
+                        UE_SERVICE,
+                    ]
+                )
+                wait_for_cell_restore()
+                restored_cell = cell_baseline()
+                rollback["restored_cell"] = restored_cell
+                rollback["passed"] = (
+                    restored_cell["gnb_image_id"] == original_cell["gnb_image_id"]
+                    and restored_cell["ue_image_id"] == original_cell["ue_image_id"]
+                    and restored_cell["gnb_restart_count"]
+                    == original_cell["gnb_restart_count"]
+                    and restored_cell["ue_restart_count"]
+                    == original_cell["ue_restart_count"]
+                )
+                if not rollback["passed"]:
+                    raise BenchmarkError(f"cell rollback mismatch: {rollback}")
+            except (OSError, BenchmarkError, subprocess.SubprocessError) as error:
+                rollback["error"] = str(error)
+                if execution_error is None:
+                    execution_error = error
+                else:
+                    execution_error = BenchmarkError(
+                        f"{execution_error}; cell rollback failed: {error}"
+                    )
+            state["rollback"] = rollback
+
+    if execution_error is None:
         state["status"] = "completed"
         state["completed_at_epoch"] = time.time()
-        state["evidence_sha256"] = evidence_hashes(output_root)
-        state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
-        print(f"OUTPUT_DIR={output_root}")
-        return 0
-    except (OSError, BenchmarkError, subprocess.SubprocessError) as error:
+    else:
         state["status"] = "failed"
-        state["error"] = str(error)
+        state["error"] = str(execution_error)
         state["failed_at_epoch"] = time.time()
-        state["evidence_sha256"] = evidence_hashes(output_root)
-        state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
-        raise
+    state["evidence_sha256"] = evidence_hashes(output_root)
+    state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+    if execution_error is not None:
+        raise BenchmarkError(str(execution_error))
+    print(f"OUTPUT_DIR={output_root}")
+    return 0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -345,6 +456,9 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--source", required=True)
     root.add_argument("--work-root", required=True)
     root.add_argument("--output-root", required=True)
+    root.add_argument(
+        "--compose-file", default="/local/repository/etc/docker-compose-cell1.yaml"
+    )
     root.add_argument("--dry-run", action="store_true")
     return root
 

@@ -21,7 +21,8 @@ def test_plan_is_benchmark_only_and_abba(tmp_path: Path) -> None:
         tmp_path / "evidence",
     )
 
-    assert plan["network_services_started"] is False
+    assert plan["network_services_started_for_benchmark"] is False
+    assert plan["radio_network_active_during_measurement"] is False
     assert [item["label"] for item in plan["benchmark_invocations"]] == list(
         MODULE.ABBA
     )
