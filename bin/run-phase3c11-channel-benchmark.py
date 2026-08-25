@@ -29,6 +29,7 @@ UE_CONTAINER = "ric5g-ue-cell1-1"
 GNB_SERVICE = "oai-gnb"
 UE_SERVICE = "oai-nr-ue1"
 ABBA = ("baseline-1", "optimized-1", "optimized-2", "baseline-2")
+KNOWN_TIMING_CONTAMINANTS = ("git pack-objects", "benchmark_channel_pipeline")
 BENCHMARK_SOURCE = Path("openair1/PHY/TOOLS/tests/benchmark_channel_pipeline.cpp")
 CORRECTNESS_SOURCE = Path("openair1/PHY/TOOLS/tests/test_channel_pipeline.cpp")
 PIPELINE_SOURCE = Path("openair1/SIMULATION/TOOLS/channel_pipeline.c")
@@ -299,7 +300,28 @@ def collect_metadata() -> dict[str, Any]:
         str(path): path.read_text().strip() for path in governor_paths if path.is_file()
     }
     values["python"] = platform.python_version()
+    processes = run_command(
+        ["ps", "-eo", "pid=,ppid=,pgid=,etimes=,pcpu=,comm=,args=", "--sort=-pcpu"],
+        check=False,
+    )
+    values["processes_top_cpu"] = "\n".join(processes.splitlines()[:25])
     return values
+
+
+def assert_no_known_timing_contaminants() -> str:
+    snapshot = run_command(
+        ["ps", "-eo", "pid=,ppid=,pgid=,etimes=,pcpu=,comm=,args=", "--sort=-pcpu"]
+    )
+    contaminants = [
+        line.strip()
+        for line in snapshot.splitlines()
+        if any(marker in line for marker in KNOWN_TIMING_CONTAMINANTS)
+    ]
+    if contaminants:
+        raise BenchmarkError(
+            "known competing process present before timing:\n" + "\n".join(contaminants)
+        )
+    return "\n".join(snapshot.splitlines()[:25])
 
 
 def evidence_hashes(output_root: Path) -> dict[str, str]:
@@ -421,6 +443,10 @@ def execute(args: argparse.Namespace) -> int:
             observed_state = docker_inspect("{{.State.Status}}", container)
             if observed_state == "running":
                 raise BenchmarkError(f"failed to quiesce {container}")
+        time.sleep(5.0)
+        state["processes_before_correctness_and_timing"] = (
+            assert_no_known_timing_contaminants()
+        )
 
         for name, condition in (("baseline", baseline), ("optimized", optimized)):
             run_command(
@@ -433,6 +459,7 @@ def execute(args: argparse.Namespace) -> int:
             label = invocation["label"]
             benchmark_command = (
                 f"{plan['benchmark_binary']} "
+                "--benchmark_filter=^BM_channel_convolution_tpool/ "
                 "--benchmark_repetitions=30 "
                 "--benchmark_report_aggregates_only=false "
                 "--benchmark_min_warmup_time=1 "

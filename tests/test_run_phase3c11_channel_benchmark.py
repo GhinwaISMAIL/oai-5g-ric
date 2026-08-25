@@ -155,3 +155,28 @@ def test_repository_storage_metadata_rejects_alternates_environment(
     monkeypatch.setattr(MODULE, "run_command", fake_run)
     with pytest.raises(MODULE.BenchmarkError, match="Git alternates"):
         MODULE.repository_storage_metadata(repository)
+
+
+def test_known_timing_contaminants_are_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        MODULE,
+        "run_command",
+        lambda *_args, **_kwargs: (
+            "100 1 100 20 98.0 git git pack-objects --revs --stdout\n"
+            "200 1 200 10 1.0 python3 benchmark runner"
+        ),
+    )
+
+    with pytest.raises(MODULE.BenchmarkError, match="git pack-objects"):
+        MODULE.assert_no_known_timing_contaminants()
+
+
+def test_quiet_process_snapshot_is_recorded(monkeypatch: pytest.MonkeyPatch) -> None:
+    snapshot = "200 1 200 10 1.0 python3 benchmark runner"
+    monkeypatch.setattr(
+        MODULE, "run_command", lambda *_args, **_kwargs: snapshot
+    )
+
+    assert MODULE.assert_no_known_timing_contaminants() == snapshot
