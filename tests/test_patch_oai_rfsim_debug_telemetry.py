@@ -4,10 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import tempfile
 import unittest
-
+from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 PATCH_SCRIPT = REPOSITORY / "bin" / "patch-oai-rfsim-debug-telemetry.py"
@@ -46,9 +45,13 @@ class PatchOaiRfsimDebugTelemetryTest(unittest.TestCase):
             self.assertIn("#include <cmath>", result)
             self.assertIn("#include <ctime>", result)
             self.assertIn("rfsim_channel_tap_energy", result)
+            self.assertIn("rfsim_channel_tap_fingerprint", result)
             self.assertIn("channel_snapshot_id=static-%lld", result)
             self.assertIn("channel_snapshot_timestamp_ns=%lld", result)
             self.assertIn("tap_energy_linear=%.17g", result)
+            self.assertIn("tap_fingerprint_fnv1a64=%016llx", result)
+            self.assertIn("oai_rng_seed=%s", result)
+            self.assertIn("channel_length=%d nb_taps=%d nb_tx=%d nb_rx=%d", result)
             self.assertIn("applied_gain_db=%.9f", result)
             self.assertIn("noise_power_db=%.9f", result)
             self.assertIn("log_rfsim_channel_debug(ptr->channel_model);", result)
