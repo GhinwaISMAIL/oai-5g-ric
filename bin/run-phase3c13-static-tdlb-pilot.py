@@ -286,6 +286,7 @@ def run_one_replay(
     expected_debug_image_id: str,
     output: Path,
     attach_timeout_seconds: float,
+    expected_gnb_restart_count: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     replay_id = f"tdlb-{replay_number}"
     override_file.write_text(override_text(debug_image, rng_seed))
@@ -375,6 +376,9 @@ def run_one_replay(
         for domain in failure_marker_counts.values()
         for count in domain.values()
     )
+    ue_restart_count = int(BASE.docker_inspect("{{.RestartCount}}", UE_CONTAINER))
+    gnb_restart_count = int(BASE.docker_inspect("{{.RestartCount}}", GNB_CONTAINER))
+    gnb_health = BASE.docker_inspect("{{.State.Health.Status}}", GNB_CONTAINER)
     return rows, {
         "replay_id": replay_id,
         "oai_rng_seed": rng_seed,
@@ -389,6 +393,12 @@ def run_one_replay(
         },
         "failure_marker_counts": failure_marker_counts,
         "critical_failure_count": critical_failure_count,
+        "ue_restart_count": ue_restart_count,
+        "gnb_restart_count": gnb_restart_count,
+        "gnb_health": gnb_health,
+        "operational_runtime_pass": ue_restart_count == 0
+        and gnb_restart_count == expected_gnb_restart_count
+        and gnb_health == "healthy",
         "raw_log_sha256": sha256(raw_log),
         "raw_gnb_log_sha256": sha256(raw_gnb_log),
         "continuous_attachment": all(item["attached"] for item in attachment_checks),
@@ -461,12 +471,17 @@ def execute(args: argparse.Namespace) -> int:
                 args.expected_debug_image_id,
                 output,
                 args.attach_timeout_seconds,
+                original_gnb_restart_count,
             )
             all_rows.extend(rows)
             summaries.append(summary)
             if summary["critical_failure_count"] != 0:
                 raise ReplayError(
                     f"critical radio failure marker observed during {summary['replay_id']}"
+                )
+            if not summary["operational_runtime_pass"]:
+                raise ReplayError(
+                    f"container restart or gNB health failure during {summary['replay_id']}"
                 )
         fingerprints = {
             summary["tap_fingerprint_fnv1a64"] for summary in summaries
