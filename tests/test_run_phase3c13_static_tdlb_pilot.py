@@ -24,6 +24,12 @@ class RunPhase3c13StaticTdlbPilotTest(unittest.TestCase):
             ("recovery", 0.0),
         ))
 
+    def test_runtime_identity_arguments_are_mandatory(self) -> None:
+        actions = {action.dest: action.required for action in MODULE.parser()._actions}
+        self.assertTrue(actions["expected_profile_revision"])
+        self.assertTrue(actions["expected_runner_sha256"])
+        self.assertTrue(actions["expected_debug_image_id"])
+
     def test_override_pins_image_and_rng_seed(self) -> None:
         self.assertEqual(
             MODULE.override_text("debug:image", 31003),

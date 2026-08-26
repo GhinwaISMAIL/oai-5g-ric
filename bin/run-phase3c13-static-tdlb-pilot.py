@@ -413,6 +413,19 @@ def execute(args: argparse.Namespace) -> int:
     output = make_output(Path(args.output_root).resolve())
     print(f"OUTPUT_DIR={output}", flush=True)
 
+    profile_root = Path(__file__).resolve().parents[1]
+    profile_revision = BASE.run_command("git", "-C", str(profile_root), "rev-parse", "HEAD")
+    if profile_revision != args.expected_profile_revision:
+        raise ReplayError(
+            f"profile revision mismatch: expected {args.expected_profile_revision}, "
+            f"observed {profile_revision}"
+        )
+    runner_sha256 = sha256(Path(__file__).resolve())
+    if runner_sha256 != args.expected_runner_sha256:
+        raise ReplayError(
+            f"runner checksum mismatch: expected {args.expected_runner_sha256}, "
+            f"observed {runner_sha256}"
+        )
     require_hash(compose_file, args.expected_compose_sha256)
     require_hash(channel_config, args.expected_channel_config_sha256)
     require_hash(ue_config, args.expected_ue_config_sha256)
@@ -505,6 +518,8 @@ def execute(args: argparse.Namespace) -> int:
         "execution_completed": error is None and len(summaries) == len(RNG_SEEDS),
         "error": error,
         "oai_revision": OAI_REVISION,
+        "profile_revision": profile_revision,
+        "runner_sha256": runner_sha256,
         "channel_family": CHANNEL_FAMILY,
         "tdl_rms_delay_spread_ns": TDL_RMS_DELAY_SPREAD_NS,
         "rng_seeds": list(RNG_SEEDS),
@@ -550,6 +565,8 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--output-root", default="/local/logs/phase3c13")
     root.add_argument("--debug-image", default=DEBUG_IMAGE)
     root.add_argument("--expected-debug-image-id", required=True)
+    root.add_argument("--expected-profile-revision", required=True)
+    root.add_argument("--expected-runner-sha256", required=True)
     root.add_argument("--expected-compose-sha256", required=True)
     root.add_argument("--expected-channel-config-sha256", required=True)
     root.add_argument("--expected-ue-config-sha256", required=True)
