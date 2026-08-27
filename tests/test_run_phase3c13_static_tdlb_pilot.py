@@ -16,6 +16,7 @@ class RunPhase3c13StaticTdlbPilotTest(unittest.TestCase):
         self.assertEqual(MODULE.CHANNEL_FAMILY, "TDL_B")
         self.assertEqual(MODULE.TDL_RMS_DELAY_SPREAD_NS, 30)
         self.assertEqual(MODULE.RNG_SEEDS, (31001, 31002, 31003, 31004, 31005))
+        self.assertEqual(MODULE.DEBUG_IMAGE, "oai-nr-ue-phase3c13-static:70508eb")
         self.assertEqual(MODULE.ORIGINAL_IMAGE, "ghinwa555/oai-nr-ue-chan:v5")
         self.assertEqual(MODULE.ENVELOPE, (
             ("baseline", 0.0),
