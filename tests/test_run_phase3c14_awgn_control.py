@@ -16,7 +16,7 @@ class RunPhase3c14AwgnControlTest(unittest.TestCase):
         self.assertEqual(MODULE.CHANNEL_FAMILY, "AWGN")
         self.assertEqual(MODULE.RNG_SEEDS, (32001, 32002, 32003, 32004, 32005))
         self.assertEqual(MODULE.DEBUG_IMAGE, "oai-nr-ue-phase3c14-awgn:70508eb")
-        self.assertEqual(MODULE.ORIGINAL_IMAGE, "ghinwa555/oai-nr-ue-chan:v5")
+        self.assertEqual(MODULE.ORIGINAL_IMAGE, "ghinwa555/oai-nr-ue-chan:v4")
         self.assertEqual(
             MODULE.ENVELOPE,
             (
