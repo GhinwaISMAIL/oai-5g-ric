@@ -7,11 +7,12 @@ import argparse
 import csv
 import importlib.util
 import math
+import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 PHASE3H_SCRIPT = Path(__file__).with_name("run-phase3h-dynamic-staircase.py")
 PHASE3H_SPEC = importlib.util.spec_from_file_location("phase3i_phase3h_support", PHASE3H_SCRIPT)
@@ -191,9 +192,109 @@ def _wait_until(epoch: float, label: str) -> None:
         time.sleep(min(0.2, remaining))
 
 
+class PersistentChannelSession:
+    def __init__(self, channel_helper: Path) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "phase3i_channel_helper", channel_helper
+        )
+        if spec is None or spec.loader is None:
+            raise ValidationError(f"cannot load channel helper: {channel_helper}")
+        self.helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.helper)
+        container, address, index = self.helper.endpoint(1, "dl", 1)
+        if index != 0 or not self.helper.container_running(container):
+            raise ValidationError("the active downlink channel endpoint is unavailable")
+        self.address = address
+        self.index = index
+        self.sock: socket.socket | None = None
+
+    def __enter__(self) -> Self:
+        self.sock = socket.create_connection((self.address, 9090), timeout=1.0)
+        identity = self._show()
+        name, model_type = self.helper.model_identity(identity, self.index)
+        if name != "rfsimu_channel_enB0" or model_type != CHANNEL_FAMILY:
+            raise ValidationError(
+                f"unexpected persistent channel identity: {name} {model_type}"
+            )
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+
+    def _execute(self, command: str) -> str:
+        if self.sock is None:
+            raise ValidationError("persistent channel session is not connected")
+        self.sock.sendall(command.encode() + b"\n")
+        chunks: list[bytes] = []
+        deadline = time.monotonic() + 0.35
+        while time.monotonic() < deadline:
+            self.sock.settimeout(max(0.001, deadline - time.monotonic()))
+            try:
+                chunk = self.sock.recv(65536)
+            except TimeoutError as error:
+                raise ValidationError(
+                    f"channel command prompt timeout: {command}"
+                ) from error
+            if not chunk:
+                raise ValidationError("persistent channel session closed unexpectedly")
+            chunks.append(chunk)
+            text = b"".join(chunks).decode(errors="replace")
+            if text.rstrip().endswith(">"):
+                return text
+        raise ValidationError(f"channel command prompt timeout: {command}")
+
+    def _show(self) -> str:
+        return self._execute("channelmod show current")
+
+    def set_controls(self, gain_db: float, noise_db: float) -> dict[str, Any]:
+        self._execute(f"channelmod modify {self.index} ploss {gain_db}")
+        self._execute(f"channelmod modify {self.index} noise_power_dB {noise_db}")
+        output = self._show()
+        name, model_type = self.helper.model_identity(output, self.index)
+        observed_gain = self.helper.observed_value(output, self.index, "ploss")
+        observed_noise = self.helper.observed_value(
+            output, self.index, "noise_power_dB"
+        )
+        if name != "rfsimu_channel_enB0" or model_type != CHANNEL_FAMILY:
+            raise ValidationError(f"unexpected active channel identity: {name} {model_type}")
+        if not math.isclose(observed_gain, gain_db, rel_tol=1e-6, abs_tol=1e-6):
+            raise ValidationError(
+                f"persistent gain verification failed: {gain_db} != {observed_gain}"
+            )
+        if not math.isclose(observed_noise, noise_db, rel_tol=1e-6, abs_tol=1e-6):
+            raise ValidationError(
+                f"persistent noise verification failed: {noise_db} != {observed_noise}"
+            )
+        applied_epoch = time.time()
+        return {
+            "gain": {
+                "model_index": self.index,
+                "model_name": name,
+                "model_type": model_type,
+                "parameter": "ploss",
+                "requested": gain_db,
+                "observed": observed_gain,
+                "verified": True,
+                "applied_epoch": applied_epoch,
+            },
+            "noise": {
+                "model_index": self.index,
+                "model_name": name,
+                "model_type": model_type,
+                "parameter": "noise_power_dB",
+                "requested": noise_db,
+                "observed": observed_noise,
+                "verified": True,
+                "applied_epoch": applied_epoch,
+            },
+        }
+
+
 def run_command_trace(
     commands: list[dict[str, Any]],
-    channel_helper: Path,
+    channel_session: PersistentChannelSession,
     command_events: list[dict[str, Any]],
     ping_checks: list[dict[str, Any]],
 ) -> tuple[float, float]:
@@ -201,8 +302,7 @@ def run_command_trace(
     for command in commands:
         scheduled_epoch = start_epoch + command["command_index"] * COMMAND_INTERVAL_SECONDS
         _wait_until(scheduled_epoch, f"command {command['command_index']}")
-        result = PHASE3H._set_controls(
-            channel_helper,
+        result = channel_session.set_controls(
             command["commanded_gain_db"],
             command["commanded_noise_power_db"],
         )
@@ -511,7 +611,8 @@ def execute(args: argparse.Namespace) -> int:
         PHASE3H._sleep_with_attachment_check(ANCHOR_SETTLING_SECONDS, "anchor start settling")
         anchor_start = PHASE3H._collect_window(ANCHOR_USABLE_SECONDS, "anchor start")
 
-        run_command_trace(commands, channel_helper, command_events, ping_checks)
+        with PersistentChannelSession(channel_helper) as channel_session:
+            run_command_trace(commands, channel_session, command_events, ping_checks)
 
         PHASE3H._set_controls(channel_helper, ANCHOR_GAIN_DB, ANCHOR_NOISE_DB)
         PHASE3H._sleep_with_attachment_check(ANCHOR_SETTLING_SECONDS, "anchor end settling")
