@@ -24,9 +24,9 @@ BASE = SUPPORT.BASE
 PARSER = SUPPORT.PARSER
 
 OAI_REVISION = "70508ebaf52f2aae420566d380c6537f2efb9f0c"
-RESEARCH_REVISION = "cf468a79f19165cc08242f2072295628d6977824"
+RESEARCH_REVISION = "631525b7df8e6b86483e3518b69e2a5d30892456"
 RESEARCH_PROTOCOL_SHA256 = (
-    "bdc48fb3d54ea3ade7a977e0233ed19f0289b6ebd64d6dc30a7965a63f1a89c9"
+    "194dfbc0ebf8a08fc994e84ece4cbad16d065f621f0526bbd5f29d68c3b03fa6"
 )
 EXPECTED_PLAN_SHA256 = (
     "8505f2f3137d08f94eaefe016827950b8782b4b6b9452ec4466425787959fc7f"
@@ -41,6 +41,7 @@ ANCHOR_NOISE_DB = -25.0
 STATE_SETTLING_SECONDS = 5.0
 STATE_USABLE_SECONDS = 10.0
 ANCHOR_START_SETTLING_SECONDS = 5.0
+ANCHOR_END_SETTLING_SECONDS = 5.0
 ANCHOR_USABLE_SECONDS = 10.0
 ANCHOR_RESET_SECONDS = 3.0
 POST_ATTACH_STABILIZATION_SECONDS = 5.0
@@ -433,6 +434,10 @@ def run_sequence(
                 f"{sequence_id} anchor reset after {segment['state_id']}",
             )
         anchor_end = sequence[-1]
+        _sleep_with_attachment_check(
+            ANCHOR_END_SETTLING_SECONDS,
+            f"{sequence_id} anchor end settling",
+        )
         windows.append(
             {
                 "segment": anchor_end,

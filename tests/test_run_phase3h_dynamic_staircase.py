@@ -38,6 +38,12 @@ class RunPhase3hDynamicStaircaseTest(unittest.TestCase):
     def test_failure_window_starts_after_attachment_stabilization(self) -> None:
         self.assertGreaterEqual(MODULE.POST_ATTACH_STABILIZATION_SECONDS, 5.0)
 
+    def test_final_anchor_receives_full_settling_interval(self) -> None:
+        self.assertEqual(
+            MODULE.ANCHOR_END_SETTLING_SECONDS,
+            MODULE.ANCHOR_START_SETTLING_SECONDS,
+        )
+
     def test_segment_join_records_dynamic_gain_and_noise(self) -> None:
         segment = {
             "sequence_index": 1,

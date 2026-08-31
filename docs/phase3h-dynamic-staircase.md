@@ -8,6 +8,8 @@ The campaign uses one gNB, one UE, and the one-tap AWGN RFsim path. It recreates
 the UE only three times. During each attachment, it visits the seven frozen outer
 states dynamically, returning to the `(-10, -25)` anchor between states. Each
 state receives five seconds of settling and ten seconds of usable telemetry.
+The measured start and end anchors also receive five seconds of settling before
+their ten-second usable windows.
 
 The complete staircase after a clean UE recreation is the independent execution
 unit. Individual one-second radio samples are not independent repetitions.
