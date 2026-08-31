@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, TypeVar
 
 PHASE3H_SCRIPT = Path(__file__).with_name("run-phase3h-dynamic-staircase.py")
 PHASE3H_SPEC = importlib.util.spec_from_file_location("phase3i_phase3h_support", PHASE3H_SCRIPT)
@@ -24,6 +24,7 @@ SUPPORT = PHASE3H.SUPPORT
 BASE = PHASE3H.BASE
 PARSER = PHASE3H.PARSER
 ValidationError = PHASE3H.ValidationError
+SessionT = TypeVar("SessionT", bound="PersistentChannelSession")
 
 OAI_REVISION = "70508ebaf52f2aae420566d380c6537f2efb9f0c"
 RESEARCH_REVISION = "b36a41e4289c2a2635f25efc5aeba607d1a0d5ce"
@@ -208,7 +209,7 @@ class PersistentChannelSession:
         self.index = index
         self.sock: socket.socket | None = None
 
-    def __enter__(self) -> Self:
+    def __enter__(self: SessionT) -> SessionT:  # noqa: PYI019
         self.sock = socket.create_connection((self.address, 9090), timeout=1.0)
         identity = self._show()
         name, model_type = self.helper.model_identity(identity, self.index)
