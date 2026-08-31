@@ -92,6 +92,9 @@ TRACE_FIELDS = (
     "command_completion_lateness_seconds",
     "sample_utc_second",
     "sample_midpoint_epoch",
+    "channel_verification_utc_second",
+    "channel_verification_emitted_epoch_us",
+    "ue_measurement_emitted_epoch_us",
     "applied_gain_db",
     "applied_noise_power_db",
     "channel_family",
@@ -356,10 +359,11 @@ def build_trace_telemetry(
     for event in command_events:
         utc_second = int(event["sample_utc_second"])
         ue = ue_rows.get(utc_second)
-        channel = channel_rows.get(utc_second)
+        channel = channel_rows.get(utc_second + 1)
         if ue is None or channel is None:
             continue
         required_ue = {
+            "emitted_epoch_us",
             "rsrp_digital_power_linear",
             "rsrp_db_per_re_unquantized",
             "ss_rsrp_dbm_integer",
@@ -369,6 +373,7 @@ def build_trace_telemetry(
         if missing_ue:
             raise ValidationError(f"incomplete UE telemetry: {sorted(missing_ue)}")
         required_channel = {
+            "emitted_epoch_us",
             "model",
             "channel_snapshot_id",
             "channel_snapshot_timestamp_ns",
@@ -412,6 +417,9 @@ def build_trace_telemetry(
             ],
             "sample_utc_second": utc_second,
             "sample_midpoint_epoch": utc_second + 0.5,
+            "channel_verification_utc_second": utc_second + 1,
+            "channel_verification_emitted_epoch_us": channel["emitted_epoch_us"],
+            "ue_measurement_emitted_epoch_us": ue["emitted_epoch_us"],
             "applied_gain_db": channel["applied_gain_db"],
             "applied_noise_power_db": channel["noise_power_db"],
             "channel_family": CHANNEL_FAMILY,

@@ -56,10 +56,11 @@ class RunPhase3iShortTraceTest(unittest.TestCase):
         self.assertEqual(MODULE.ANCHOR_SETTLING_SECONDS, 5.0)
 
     def test_persistent_channel_session_is_used_for_the_timed_trace(self) -> None:
+        source = SCRIPT.read_text()
         self.assertIn(
-            "with PersistentChannelSession(channel_helper) as channel_session",
-            SCRIPT.read_text(),
+            "with PersistentChannelSession(channel_helper) as channel_session", source
         )
+        self.assertIn("channel_rows.get(utc_second + 1)", source)
         self.assertTrue(math.isclose(MODULE.COMMAND_INTERVAL_SECONDS, 1.0))
 
     def test_persistent_channel_session_sets_and_verifies_both_controls(self) -> None:
