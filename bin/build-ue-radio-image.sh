@@ -8,6 +8,7 @@ EXPECTED_OAI_COMMIT="70508ebaf52f2aae420566d380c6537f2efb9f0c"
 RUNNER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 MEASUREMENT_SOURCE="$SOURCE_DIR/openair1/PHY/NR_UE_ESTIMATION/nr_ue_measurements.c"
 RFSIMULATOR_SOURCE="$SOURCE_DIR/radio/rfsimulator/simulator.cpp"
+APPLY_CHANNELMOD_SOURCE="$SOURCE_DIR/radio/rfsimulator/apply_channelmod.c"
 RANDOM_CHANNEL_SOURCE="$SOURCE_DIR/openair1/SIMULATION/TOOLS/random_channel.c"
 
 [ "$(uname -m)" = "x86_64" ] || {
@@ -29,11 +30,13 @@ python3 "$RUNNER_DIR/patch-oai-ue-radio-measurements.py" "$MEASUREMENT_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-rfsim-rng-init.py" "$RFSIMULATOR_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-rfsim-rsrp-calibration.py" "$RFSIMULATOR_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-rfsim-debug-telemetry.py" "$RFSIMULATOR_SOURCE"
+python3 "$RUNNER_DIR/patch-oai-rfsim-noise-scaling.py" "$APPLY_CHANNELMOD_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-channelmod-scalar-control.py" "$RANDOM_CHANNEL_SOURCE"
 python3 "$RUNNER_DIR/patch-oai-tdl-model.py" "$RANDOM_CHANNEL_SOURCE"
 git -C "$SOURCE_DIR" diff --check -- \
     "$MEASUREMENT_SOURCE" \
     "$RFSIMULATOR_SOURCE" \
+    "$APPLY_CHANNELMOD_SOURCE" \
     "$RANDOM_CHANNEL_SOURCE"
 
 docker build \

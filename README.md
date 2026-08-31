@@ -192,10 +192,17 @@ ETU is not offered by the reservation profile. Its stock delay profile did not
 complete initial NR synchronization in the validated 106-PRB, numerology-1
 baseline; it should only be reconsidered with a separately validated waveform.
 
-The default is a quiet channel, deliberately. **Noise gates random access**: at
-`noise_power_dB` of −4/−2 no UE completes RACH — they synchronise, decode SIB1, and
-then loop on `RAR reception failed`. The generated baseline uses −30, at which UEs
-attach reliably. Let the UEs attach first, then impair the channel.
+The default is a quiet channel, deliberately. `noise_power_dB` is a power-domain
+control. The image build corrects the pinned OAI legacy conversion so that the
+Gaussian RMS amplitude is scaled with `10^(noise_power_dB/20)`. A 10 dB command
+change therefore produces a 10 dB noise-power change.
+
+Historical images used `10^(noise_power_dB/10)` as an amplitude coefficient.
+Their command axis was doubled: legacy −30, −10, and −5 are equivalent to
+corrected −60, −20, and −10, respectively. The earlier observation that legacy
+−4/−2 prevented RACH remains provenance for those images only. Corrected-build
+attachment thresholds must be measured again; do not copy the historical numeric
+boundary into a new execution plan.
 
 Models can be changed at runtime over telnet. The server runs in the UE, since the
 downlink channel is applied UE-side:
