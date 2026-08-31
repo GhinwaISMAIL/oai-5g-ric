@@ -11,6 +11,10 @@ state receives five seconds of settling and ten seconds of usable telemetry.
 
 The complete staircase after a clean UE recreation is the independent execution
 unit. Individual one-second radio samples are not independent repetitions.
+After attachment and telemetry markers appear, the runner requires five seconds
+of continuous attachment before opening the measurement failure window. This
+keeps recovered RRC-setup retransmissions separate from failures during the
+staircase itself.
 
 The runner stops on attachment loss, insufficient telemetry, packet loss beyond
 the frozen limit, critical radio failure, container restart, channel-identity

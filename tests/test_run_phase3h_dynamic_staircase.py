@@ -35,6 +35,9 @@ class RunPhase3hDynamicStaircaseTest(unittest.TestCase):
     def test_plan_checksum_matches_research_protocol(self) -> None:
         self.assertEqual(MODULE.SUPPORT.sha256(PLAN), MODULE.EXPECTED_PLAN_SHA256)
 
+    def test_failure_window_starts_after_attachment_stabilization(self) -> None:
+        self.assertGreaterEqual(MODULE.POST_ATTACH_STABILIZATION_SECONDS, 5.0)
+
     def test_segment_join_records_dynamic_gain_and_noise(self) -> None:
         segment = {
             "sequence_index": 1,

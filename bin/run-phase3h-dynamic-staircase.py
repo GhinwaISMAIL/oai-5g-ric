@@ -43,6 +43,7 @@ STATE_USABLE_SECONDS = 10.0
 ANCHOR_START_SETTLING_SECONDS = 5.0
 ANCHOR_USABLE_SECONDS = 10.0
 ANCHOR_RESET_SECONDS = 3.0
+POST_ATTACH_STABILIZATION_SECONDS = 5.0
 MINIMUM_SEGMENT_ROWS = 7
 UE_CONTAINER = BASE.UE_CONTAINER
 GNB_CONTAINER = BASE.GNB_CONTAINER
@@ -370,6 +371,10 @@ def run_sequence(
     if not math.isclose(float(attach_noise["observed"]), ATTACH_NOISE_DB, abs_tol=1e-6):
         raise ValidationError(f"UE did not attach at -60 dB noise: {attach_noise}")
     BASE.wait_for_markers(15.0)
+    _sleep_with_attachment_check(
+        POST_ATTACH_STABILIZATION_SECONDS,
+        f"{sequence_id} post-attachment stabilization",
+    )
     ue_log_prefix = BASE.run_command("docker", "logs", UE_CONTAINER)
     gnb_log_prefix = BASE.run_command("docker", "logs", GNB_CONTAINER)
 
