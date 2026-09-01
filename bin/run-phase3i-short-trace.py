@@ -98,6 +98,8 @@ TRACE_FIELDS = (
     "ue_measurement_emitted_epoch_us",
     "applied_gain_db",
     "applied_noise_power_db",
+    "channel_snapshot_applied_gain_db",
+    "channel_snapshot_noise_power_db",
     "channel_family",
     "channel_model_name",
     "channel_snapshot_id",
@@ -403,8 +405,31 @@ def build_trace_telemetry(
             raise ValidationError(f"incomplete channel telemetry: {sorted(missing)}")
         if channel["oai_rng_seed"] != str(OAI_RNG_SEED):
             raise ValidationError("trace telemetry RNG seed mismatch")
-        applied_gain = float(channel["applied_gain_db"])
-        applied_noise = float(channel["noise_power_db"])
+        try:
+            gain_result = event["gain_result"]
+            noise_result = event["noise_result"]
+            applied_gain = float(gain_result["observed"])
+            applied_noise = float(noise_result["observed"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValidationError(
+                f"incomplete immediate control acknowledgement at command "
+                f"{event['command_index']}"
+            ) from error
+        for result, parameter in (
+            (gain_result, "ploss"),
+            (noise_result, "noise_power_dB"),
+        ):
+            if (
+                result.get("verified") is not True
+                or result.get("model_index") != 0
+                or result.get("model_name") != "rfsimu_channel_enB0"
+                or result.get("model_type") != CHANNEL_FAMILY
+                or result.get("parameter") != parameter
+            ):
+                raise ValidationError(
+                    f"invalid immediate {parameter} acknowledgement at command "
+                    f"{event['command_index']}"
+                )
         if not math.isclose(
             applied_gain,
             event["commanded_gain_db"],
@@ -441,8 +466,10 @@ def build_trace_telemetry(
             "channel_verification_utc_second": utc_second + 1,
             "channel_verification_emitted_epoch_us": channel["emitted_epoch_us"],
             "ue_measurement_emitted_epoch_us": ue["emitted_epoch_us"],
-            "applied_gain_db": channel["applied_gain_db"],
-            "applied_noise_power_db": channel["noise_power_db"],
+            "applied_gain_db": applied_gain,
+            "applied_noise_power_db": applied_noise,
+            "channel_snapshot_applied_gain_db": channel["applied_gain_db"],
+            "channel_snapshot_noise_power_db": channel["noise_power_db"],
             "channel_family": CHANNEL_FAMILY,
             "channel_model_name": channel["model"],
             "channel_snapshot_id": channel["channel_snapshot_id"],
@@ -812,6 +839,10 @@ def execute(args: argparse.Namespace) -> int:
         "final_test6_accessed": False,
         "abc_authorized": False,
         "full_trace_replay_authorized": False,
+        "control_echo_abs_tolerance_db": CONTROL_ECHO_ABS_TOL_DB,
+        "control_application_verification_source": "immediate_persistent_telnet_show",
+        "channel_snapshot_purpose": "static_channel_identity_and_tap_invariants_only",
+        "channel_snapshot_control_match_required": False,
     }
     BASE.write_json(output / "execution_state.json", execution_state)
     if error is not None:

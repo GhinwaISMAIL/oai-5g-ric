@@ -26,9 +26,12 @@ SUPPORT = PHASE3I.SUPPORT
 BASE = PHASE3I.BASE
 ValidationError = PHASE3I.ValidationError
 
-RESEARCH_REVISION = "16117beead9da5a72a862e820a25ea7fee810345"
+RESEARCH_REVISION = "d28e580092e2140189658f6f305e3e245bfb330b"
 RESEARCH_PROTOCOL_SHA256 = (
     "47fd0b90363a254a456ade605a022b4240dc914f22f2d5eb2f56905ff396d45b"
+)
+EXECUTION_PATCH_SHA256 = (
+    "9da4e23cc031f00b580685f463dc31c37f5c939b0e02b2db59471f08429c666d"
 )
 EXPECTED_COMMANDS_SHA256 = (
     "c25fb55ea78294e7e7f44a9dddf6b985ba50881d09d6f394fbbc96bd074fcc76"
@@ -158,6 +161,10 @@ def normalize_output(output: Path, execution_number: int, seed: int) -> None:
             "primary_kpi_alignment_seconds": 0,
             "channel_verification_alignment_seconds": 1,
             "control_echo_abs_tolerance_db": CONTROL_ECHO_ABS_TOL_DB,
+            "execution_patch_sha256": EXECUTION_PATCH_SHA256,
+            "control_application_verification_source": "immediate_persistent_telnet_show",
+            "channel_snapshot_purpose": "static_channel_identity_and_tap_invariants_only",
+            "channel_snapshot_control_match_required": False,
             "commands_adapted_during_execution": False,
             "translator_update_authorized": False,
             "test6_accessed": False,

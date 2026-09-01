@@ -160,6 +160,63 @@ class RunPhase3iShortTraceTest(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.ValidationError, "noise verification failed"):
             session.set_controls(-8.5, -34.036279572)
 
+    def test_trace_uses_immediate_ack_when_async_snapshot_has_next_command(self) -> None:
+        event = {
+            "command_index": 103,
+            "trace_row_index": 103,
+            "trace_time_bin": 103,
+            "trace_t_s": 103.0,
+            "target_relative_rsrp_db": -3.0,
+            "target_sinr_db": 18.0,
+            "projected_relative_rsrp_db": -3.0,
+            "projected_sinr_db": 18.0,
+            "commanded_gain_db": -13.542553956,
+            "commanded_noise_power_db": -28.280106729,
+            "clipped": False,
+            "scheduled_epoch": 1000.0,
+            "command_complete_epoch": 1000.12,
+            "command_completion_lateness_seconds": 0.12,
+            "sample_utc_second": 1000,
+            "gain_result": {
+                "model_index": 0,
+                "model_name": "rfsimu_channel_enB0",
+                "model_type": "AWGN",
+                "parameter": "ploss",
+                "requested": -13.542553956,
+                "observed": -13.542554,
+                "verified": True,
+                "applied_epoch": 1000.12,
+            },
+            "noise_result": {
+                "model_index": 0,
+                "model_name": "rfsimu_channel_enB0",
+                "model_type": "AWGN",
+                "parameter": "noise_power_dB",
+                "requested": -28.280106729,
+                "observed": -28.280107,
+                "verified": True,
+                "applied_epoch": 1000.12,
+            },
+        }
+        logs = (
+            "UE_RADIO_DEBUG_V1 utc_second=1000 emitted_epoch_us=1001001000 "
+            "rsrp_digital_power_linear=10 rsrp_db_per_re_unquantized=37 "
+            "ss_rsrp_dbm_integer=-40 ss_sinr_db=20\n"
+            "RFSIM_CHANNEL_DEBUG_V1 utc_second=1001 emitted_epoch_us=1001002000 "
+            "model=rfsimu_channel_enB0 channel_snapshot_id=static-0 "
+            "channel_snapshot_timestamp_ns=100 tap_energy_linear=1 "
+            "tap_fingerprint_fnv1a64=abc channel_length=1 nb_taps=1 nb_tx=1 "
+            f"nb_rx=1 oai_rng_seed={MODULE.OAI_RNG_SEED} "
+            "applied_gain_db=-8.400771832 "
+            "noise_power_db=-31.069929123\n"
+        )
+        rows = MODULE.build_trace_telemetry([event], logs)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["applied_gain_db"], -13.542554)
+        self.assertEqual(rows[0]["applied_noise_power_db"], -28.280107)
+        self.assertEqual(rows[0]["channel_snapshot_applied_gain_db"], "-8.400771832")
+        self.assertEqual(rows[0]["channel_snapshot_noise_power_db"], "-31.069929123")
+
 
 if __name__ == "__main__":
     unittest.main()

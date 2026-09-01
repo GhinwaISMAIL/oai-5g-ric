@@ -82,6 +82,18 @@ class RunPhase3jFullTraceTest(unittest.TestCase):
             self.assertEqual(state["oai_rng_seed"], 47002)
             self.assertEqual(state["target_rows"], 305)
             self.assertEqual(state["control_echo_abs_tolerance_db"], 5e-6)
+            self.assertEqual(
+                state["execution_patch_sha256"], MODULE.EXECUTION_PATCH_SHA256
+            )
+            self.assertEqual(
+                state["control_application_verification_source"],
+                "immediate_persistent_telnet_show",
+            )
+            self.assertEqual(
+                state["channel_snapshot_purpose"],
+                "static_channel_identity_and_tap_invariants_only",
+            )
+            self.assertFalse(state["channel_snapshot_control_match_required"])
             self.assertFalse(state["test6_accessed"])
             self.assertFalse(state["translator_update_authorized"])
 
