@@ -36,6 +36,7 @@ EXPECTED_COMMANDS_SHA256 = (
 EXECUTION_SEEDS = {1: 47001, 2: 47002, 3: 47003}
 TARGET_ROWS = 305
 MINIMUM_TRACE_ROWS = 299
+CONTROL_ECHO_ABS_TOL_DB = 5e-6
 EXPECTED_CLIPPED_INDICES = (72, 101, 102, 107, 124, 125, 139, 141)
 OUTPUT_PATH: Path | None = None
 
@@ -118,6 +119,7 @@ def configure_execution(execution_number: int) -> int:
     PHASE3I.OAI_RNG_SEED = seed
     PHASE3I.MINIMUM_TRACE_ROWS = MINIMUM_TRACE_ROWS
     PHASE3I.PING_INTERVAL_COMMANDS = 25
+    PHASE3I.CONTROL_ECHO_ABS_TOL_DB = CONTROL_ECHO_ABS_TOL_DB
     PHASE3I.load_commands = load_commands
     PHASE3I.make_output = make_output
     PHASE3I.__file__ = __file__
@@ -155,6 +157,7 @@ def normalize_output(output: Path, execution_number: int, seed: int) -> None:
             "clipped_command_rows": len(EXPECTED_CLIPPED_INDICES),
             "primary_kpi_alignment_seconds": 0,
             "channel_verification_alignment_seconds": 1,
+            "control_echo_abs_tolerance_db": CONTROL_ECHO_ABS_TOL_DB,
             "commands_adapted_during_execution": False,
             "translator_update_authorized": False,
             "test6_accessed": False,

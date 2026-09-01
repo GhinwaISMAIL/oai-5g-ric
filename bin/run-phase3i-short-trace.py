@@ -48,6 +48,7 @@ ANCHOR_USABLE_SECONDS = 10.0
 COMMAND_INTERVAL_SECONDS = 1.0
 COMMAND_START_LEAD_SECONDS = 2.0
 MAXIMUM_COMMAND_COMPLETION_LATENESS_SECONDS = 0.5
+CONTROL_ECHO_ABS_TOL_DB = 5e-6
 MINIMUM_TRACE_ROWS = 55
 PING_INTERVAL_COMMANDS = 10
 UE_CONTAINER = BASE.UE_CONTAINER
@@ -263,11 +264,21 @@ class PersistentChannelSession:
         )
         if name != "rfsimu_channel_enB0" or model_type != CHANNEL_FAMILY:
             raise ValidationError(f"unexpected active channel identity: {name} {model_type}")
-        if not math.isclose(observed_gain, gain_db, rel_tol=1e-6, abs_tol=1e-6):
+        if not math.isclose(
+            observed_gain,
+            gain_db,
+            rel_tol=0.0,
+            abs_tol=CONTROL_ECHO_ABS_TOL_DB,
+        ):
             raise ValidationError(
                 f"persistent gain verification failed: {gain_db} != {observed_gain}"
             )
-        if not math.isclose(observed_noise, noise_db, rel_tol=1e-6, abs_tol=1e-6):
+        if not math.isclose(
+            observed_noise,
+            noise_db,
+            rel_tol=0.0,
+            abs_tol=CONTROL_ECHO_ABS_TOL_DB,
+        ):
             raise ValidationError(
                 f"persistent noise verification failed: {noise_db} != {observed_noise}"
             )
@@ -394,9 +405,19 @@ def build_trace_telemetry(
             raise ValidationError("trace telemetry RNG seed mismatch")
         applied_gain = float(channel["applied_gain_db"])
         applied_noise = float(channel["noise_power_db"])
-        if not math.isclose(applied_gain, event["commanded_gain_db"], abs_tol=1e-6):
+        if not math.isclose(
+            applied_gain,
+            event["commanded_gain_db"],
+            rel_tol=0.0,
+            abs_tol=CONTROL_ECHO_ABS_TOL_DB,
+        ):
             raise ValidationError(f"applied gain mismatch at command {event['command_index']}")
-        if not math.isclose(applied_noise, event["commanded_noise_power_db"], abs_tol=1e-6):
+        if not math.isclose(
+            applied_noise,
+            event["commanded_noise_power_db"],
+            rel_tol=0.0,
+            abs_tol=CONTROL_ECHO_ABS_TOL_DB,
+        ):
             raise ValidationError(f"applied noise mismatch at command {event['command_index']}")
         row = {
             "command_index": event["command_index"],

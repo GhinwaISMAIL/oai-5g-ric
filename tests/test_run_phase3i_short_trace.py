@@ -55,6 +55,25 @@ class RunPhase3iShortTraceTest(unittest.TestCase):
         self.assertLessEqual(MODULE.MAXIMUM_COMMAND_COMPLETION_LATENESS_SECONDS, 0.5)
         self.assertEqual(MODULE.ANCHOR_SETTLING_SECONDS, 5.0)
 
+    def test_control_echo_tolerance_covers_float32_round_trip_only(self) -> None:
+        self.assertEqual(MODULE.CONTROL_ECHO_ABS_TOL_DB, 5e-6)
+        self.assertTrue(
+            math.isclose(
+                -34.036278,
+                -34.036279572,
+                rel_tol=0.0,
+                abs_tol=MODULE.CONTROL_ECHO_ABS_TOL_DB,
+            )
+        )
+        self.assertFalse(
+            math.isclose(
+                -34.03627,
+                -34.036279572,
+                rel_tol=0.0,
+                abs_tol=MODULE.CONTROL_ECHO_ABS_TOL_DB,
+            )
+        )
+
     def test_persistent_channel_session_is_used_for_the_timed_trace(self) -> None:
         source = SCRIPT.read_text()
         self.assertIn(
@@ -89,23 +108,57 @@ class RunPhase3iShortTraceTest(unittest.TestCase):
 
             @staticmethod
             def observed_value(_output: str, _index: int, parameter: str) -> float:
-                return -8.5 if parameter == "ploss" else -21.25
+                return -8.5 if parameter == "ploss" else -34.036278
 
         session = object.__new__(MODULE.PersistentChannelSession)
         session.helper = FakeHelper()
         session.index = 0
         session.sock = FakeSocket()
-        result = session.set_controls(-8.5, -21.25)
+        result = session.set_controls(-8.5, -34.036279572)
         self.assertEqual(
             session.sock.sent,
             [
                 b"channelmod modify 0 ploss -8.5\n",
-                b"channelmod modify 0 noise_power_dB -21.25\n",
+                b"channelmod modify 0 noise_power_dB -34.036279572\n",
                 b"channelmod show current\n",
             ],
         )
         self.assertTrue(result["gain"]["verified"])
         self.assertTrue(result["noise"]["verified"])
+
+    def test_persistent_channel_session_rejects_material_control_mismatch(self) -> None:
+        class FakeSocket:
+            def __init__(self) -> None:
+                self.responses = [
+                    b"modified\nsoftmodem_5Gue> ",
+                    b"modified\nsoftmodem_5Gue> ",
+                    b"show output\nsoftmodem_5Gue> ",
+                ]
+
+            def sendall(self, _value: bytes) -> None:
+                pass
+
+            def settimeout(self, _value: float) -> None:
+                pass
+
+            def recv(self, _size: int) -> bytes:
+                return self.responses.pop(0)
+
+        class FakeHelper:
+            @staticmethod
+            def model_identity(_output: str, _index: int) -> tuple[str, str]:
+                return "rfsimu_channel_enB0", "AWGN"
+
+            @staticmethod
+            def observed_value(_output: str, _index: int, parameter: str) -> float:
+                return -8.5 if parameter == "ploss" else -34.03627
+
+        session = object.__new__(MODULE.PersistentChannelSession)
+        session.helper = FakeHelper()
+        session.index = 0
+        session.sock = FakeSocket()
+        with self.assertRaisesRegex(MODULE.ValidationError, "noise verification failed"):
+            session.set_controls(-8.5, -34.036279572)
 
 
 if __name__ == "__main__":

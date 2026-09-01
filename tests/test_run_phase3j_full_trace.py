@@ -50,6 +50,7 @@ class RunPhase3jFullTraceTest(unittest.TestCase):
             self.assertEqual(MODULE.PHASE3I.OAI_RNG_SEED, expected_seed)
             self.assertEqual(MODULE.PHASE3I.MINIMUM_TRACE_ROWS, 299)
             self.assertEqual(MODULE.PHASE3I.PING_INTERVAL_COMMANDS, 25)
+            self.assertEqual(MODULE.PHASE3I.CONTROL_ECHO_ABS_TOL_DB, 5e-6)
         with self.assertRaisesRegex(MODULE.ValidationError, "1, 2, or 3"):
             MODULE.configure_execution(4)
 
@@ -80,6 +81,7 @@ class RunPhase3jFullTraceTest(unittest.TestCase):
             self.assertEqual(state["execution_number"], 2)
             self.assertEqual(state["oai_rng_seed"], 47002)
             self.assertEqual(state["target_rows"], 305)
+            self.assertEqual(state["control_echo_abs_tolerance_db"], 5e-6)
             self.assertFalse(state["test6_accessed"])
             self.assertFalse(state["translator_update_authorized"])
 
