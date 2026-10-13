@@ -230,6 +230,21 @@ sudo python3 bin/channel-cell.py set --cell 1 --direction ul \
   --parameter noise_power_dB --value -25
 ```
 
+`set` handles one change per process and takes about 3.3 s when started over SSH. For a
+timeline, `play` keeps one telnet connection per UE open and applies every change at
+`start_epoch + at_s`, reading each value back. `check` reads the current model of each
+target once. Both read one JSON request from standard input:
+
+```bash
+echo '{"start_epoch": 1790000000.0, "events": [
+  {"event_index": 0, "at_s": 0.0, "target": "ue1", "ue": 1, "direction": "dl",
+   "parameter": "ploss", "value": 12.0}]}' |
+  sudo python3 bin/channel-cell.py play --cell 1
+```
+
+Each change is reported as one JSON line with `lag_s`, the delay after its deadline.
+`--address UE=HOST[:PORT]` replaces the Docker address of a UE for bench tests.
+
 Channel family/type remains a boot-time setting. Runtime schedules may change
 `ploss`, `noise_power_dB`, `riceanf`, `aoa`, `offset`, and `forgetf` after UEs
 have attached. A failed read-back must invalidate a labelled data-collection run.
