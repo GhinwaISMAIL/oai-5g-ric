@@ -150,6 +150,11 @@ python3 /local/repository/bin/patch-flexric-receipt-timestamps.py \
 python3 /local/repository/bin/patch-flexric-iapp-log.py \
     /opt/oai-src/openair2/E2AP/flexric/src/ric/iApps/stdout.c \
     || exit 1
+# Store the whole E2 stream: 10 ms reports and an unsynchronised WAL writer (see the script header).
+python3 /local/repository/bin/patch-flexric-xapp-capture.py \
+    /opt/oai-src/openair2/E2AP/flexric/src/xApp/db/sqlite3/sqlite3_wrapper.c \
+    /opt/oai-src/openair2/E2AP/flexric/examples/xApp/c/monitor/xapp_gtp_mac_rlc_pdcp_moni.c \
+    || exit 1
 # The patch scripts above insert SQL schema strings with trailing whitespace.
 # git diff --check exits non-zero on whitespace errors, so normalise first or
 # the check below fails on every run and the FlexRIC build never starts.
@@ -165,6 +170,12 @@ cmake -DKPM_VERSION=KPM_V3_00 -DE2AP_VERSION=E2AP_V3 -DXAPP_DB=SQLITE3_XAPP .. \
     || exit 1
 make -j"$(nproc)" || exit 1
 make install || exit 1
+# Fail setup if the patched settings did not reach the xApp binary.
+XAPP_MON_BIN=/opt/oai-src/openair2/E2AP/flexric/build/examples/xApp/c/monitor/xapp_gtp_mac_rlc_pdcp_moni
+for needle in 'pragma synchronous=off' '10_ms'; do
+    grep -qa -- "$needle" "$XAPP_MON_BIN" \
+        || { echo "[CORE] ERROR: xApp binary lacks '$needle'"; exit 1; }
+done
 ls -1 /usr/local/lib/flexric/
 
 # make install OVERWRITES flexric.conf and resets NEAR_RIC_IP to 127.0.0.1.
